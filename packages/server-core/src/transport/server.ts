@@ -329,7 +329,14 @@ export class WsRpcServer implements RpcServer {
       }
 
       this.wss.on('connection', (ws, req) => {
-        this.onConnection(ws, req.headers.cookie ?? null)
+        let cookie = req.headers.cookie ?? null
+        // Safari doesn't send SameSite cookies on ws:// upgrades — accept the
+        // session JWT via ?auth= query param as a cookie-equivalent fallback.
+        if (!cookie && req.url) {
+          const authToken = new URL(req.url, 'http://localhost').searchParams.get('auth')
+          if (authToken) cookie = `craft_session=${authToken}`
+        }
+        this.onConnection(ws, cookie)
       })
     })
   }

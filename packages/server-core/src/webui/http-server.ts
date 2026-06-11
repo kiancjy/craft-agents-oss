@@ -353,6 +353,9 @@ export function createWebuiHandler(options: WebuiHandlerOptions): WebuiHandler {
       }
       return Response.json({
         wsUrl: resolveWebSocketUrl(req, { publicWsUrl, wsProtocol, wsPort }),
+        // Safari (incl. iOS) doesn't send SameSite cookies on ws:// upgrades,
+        // so the client passes this token as a ?auth= query param instead.
+        wsToken: await createSessionToken(secret),
       })
     }
 
