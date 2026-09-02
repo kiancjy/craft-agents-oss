@@ -69,6 +69,21 @@ export function resolvePiModel(
     if (model) return model;
   }
 
+  // Variant fallback: allow point-release ids the SDK catalog doesn't list yet
+  // (e.g. "claude-fable-5-1" when only "claude-fable-5" is registered). Clone the
+  // longest registered base model whose id is a dash-boundary prefix of the
+  // requested id, and send the requested id on the wire. Same pattern as the
+  // minimax-cn id rewrite above — the provider API accepts ids the local
+  // catalog hasn't caught up to.
+  const variantBases = allModels.filter(m =>
+    bareId.startsWith(m.id + '-') &&
+    (!piAuthProvider || (m as any).provider === piAuthProvider || (m as any).provider === 'custom-endpoint'),
+  );
+  if (variantBases.length) {
+    const base = variantBases.reduce((a, b) => (a.id.length >= b.id.length ? a : b));
+    return { ...base, id: bareId };
+  }
+
   return undefined;
 }
 
