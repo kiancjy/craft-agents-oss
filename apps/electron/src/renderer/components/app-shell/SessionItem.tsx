@@ -13,6 +13,7 @@ import { CompactSessionMenu } from "./CompactSessionMenu"
 import { SessionStatusIcon } from "./SessionStatusIcon"
 import { SessionBadges } from "./SessionBadges"
 import { SessionProjectColorWrapper } from "./SessionProjectColorWrapper"
+import { hasTransferTargets } from "./transfer-targets"
 import { useProjectColorTreatment } from "@/hooks/useProjectColorTreatment"
 import { getSessionTitle, getSessionPreviewText, highlightMatch, hasUnreadMeta, shortTimeLocale } from "@/utils/session"
 import { useSessionListContext } from "@/context/SessionListContext"
@@ -58,7 +59,7 @@ export function SessionItem({
 }: SessionItemProps) {
   const ctx = useSessionListContext()
   const { workspaces, isCompactMode } = useAppShellContext()
-  const hasRemoteWorkspaces = workspaces?.some(w => w.remoteServer) ?? false
+  const canSendToWorkspace = hasTransferTargets(workspaces)
   const { hotkey: nextHotkey } = useActionLabel('chat.nextSearchMatch')
   const { hotkey: prevHotkey } = useActionLabel('chat.prevSearchMatch')
   const title = getSessionTitle(item)
@@ -151,7 +152,7 @@ export function SessionItem({
           onSessionStatusChange={(s) => ctx.onSessionStatusChange(item.id, s)}
           onOpenInNewWindow={() => ctx.onOpenInNewWindow(item)}
           onSendToWorkspace={ctx.onSendToWorkspace ? () => ctx.onSendToWorkspace!([item.id]) : undefined}
-          hasRemoteWorkspaces={hasRemoteWorkspaces}
+          hasTransferTargets={canSendToWorkspace}
           onDelete={() => ctx.onDelete(item.id)}
           projects={ctx.projects}
           onSetProjectId={ctx.onSetProjectId ? (pid) => ctx.onSetProjectId!(item.id, pid) : undefined}
@@ -168,7 +169,7 @@ export function SessionItem({
           item={item}
           sessionStatuses={ctx.sessionStatuses}
           labels={ctx.labels}
-          hasRemoteWorkspaces={hasRemoteWorkspaces}
+          hasTransferTargets={canSendToWorkspace}
           onLabelsChange={ctx.onLabelsChange ? (ls) => ctx.onLabelsChange!(item.id, ls) : undefined}
           onRename={() => ctx.onRenameClick(item.id, title)}
           onFlag={() => ctx.onFlag?.(item.id)}

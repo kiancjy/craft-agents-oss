@@ -2004,11 +2004,6 @@ export function shouldAllowToolInMode(
 
   // Handle MCP tools - allow read-only, block write operations
   if (toolName.startsWith('mcp__')) {
-    // Always allow documentation tools (read-only, always available)
-    if (toolName.startsWith('mcp__craft-agents-docs__')) {
-      return { allowed: true };
-    }
-
     // Handle session-scoped tools - derive safe-mode behavior from canonical session-tools-core metadata
     if (toolName.startsWith('mcp__session__')) {
       const safeAllowedSessionTools = getSessionSafeAllowedToolNames({
@@ -2100,11 +2095,17 @@ function getBlockReasonWithConfig(toolName: string, config: ToolCheckConfig): st
  * errorResponse() in packages/session-tools-core/src/response.ts for the
  * full explanation of the OpenAI Responses API limitation.
  *
+ * Must NOT set `continue: false`: since Claude CLI 2.1.212 (SDK 0.3.220)
+ * that halts the entire turn before the model sees the reason, so it can
+ * never react (e.g. suggest a mode switch or submit a plan). With
+ * `continue: true`, `decision: 'block'` feeds the reason back to the
+ * model as a tool error and the turn continues.
+ *
  * @param reason - The reason for blocking (from shouldAllowToolInMode)
  */
 export function blockWithReason(reason: string) {
   return {
-    continue: false,
+    continue: true,
     decision: 'block' as const,
     reason: `[ERROR] ${reason}`,
   };

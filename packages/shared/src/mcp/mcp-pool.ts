@@ -13,8 +13,9 @@
  * - Runtime source switching without session restart
  */
 
-import { CraftMcpClient, type McpClientConfig, type PoolClient } from './client.ts';
+import { CraftMcpClient, type McpClientConfig, type PoolCallToolOptions, type PoolClient } from './client.ts';
 import { ApiSourcePoolClient } from './api-source-pool-client.ts';
+import { proxyToolName } from './proxy-tool-name.ts';
 import type { SdkMcpServerConfig } from '../agent/backend/types.ts';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -159,7 +160,19 @@ export class McpClientPool {
     this.toolCache.set(slug, tools);
 
     for (const tool of tools) {
-      const proxyName = `mcp__${slug}__${tool.name}`;
+      const proxyName = proxyToolName(slug, tool.name);
+      const existing = this.proxyTools.get(proxyName);
+      if (existing && existing.originalName !== tool.name) {
+        // Two distinct MCP tool names sanitized to the same proxy name (e.g.
+        // `pat.batch` and `pat_batch`). Keep the first; a silent overwrite would
+        // route later calls to the wrong original tool (#864). Known limitation:
+        // the skipped tool is not callable this session — deterministic
+        // disambiguation (suffixing) is a possible follow-up if this ever hits
+        // a real server. Warn loudly so a "missing" tool is diagnosable.
+        console.warn(`[McpClientPool] Proxy name collision on ${proxyName} (source ${slug}): keeping ${existing.originalName}, skipping ${tool.name} — the skipped tool will not be callable`);
+        this.debug(`Proxy name collision on ${proxyName}: keeping ${existing.originalName}, skipping ${tool.name}`);
+        continue;
+      }
       this.proxyTools.set(proxyName, { slug, originalName: tool.name });
     }
 
@@ -187,6 +200,31 @@ export class McpClientPool {
   async connectInProcess(slug: string, mcpServer: McpServer): Promise<void> {
     if (this.clients.has(slug)) return;
     await this.registerClient(slug, new ApiSourcePoolClient(mcpServer));
+  }
+
+  /**
+   * Ensure one source is connected with the given config, without touching
+   * other pool members (unlike sync(), which reconciles the full set).
+   * Reconnects when the config changed (e.g. refreshed OAuth token), and
+   * applies the same local-MCP gate as sync(): stdio configs are refused
+   * when local MCP is disabled for this workspace.
+   *
+   * @throws Error for stdio configs while local MCP is disabled, and on
+   *   connection failure (propagated from connect()).
+   */
+  async ensureConnected(slug: string, config: SdkMcpServerConfig): Promise<void> {
+    if (config.type === 'stdio' && this.workspaceRootPath && !isLocalMcpEnabled(this.workspaceRootPath)) {
+      throw new Error(`Local MCP is disabled for this workspace — cannot connect stdio source "${slug}"`);
+    }
+
+    if (this.clients.has(slug)) {
+      const oldConfig = this.activeConfigs.get(slug);
+      if (!oldConfig || !mcpConfigChanged(oldConfig, config)) return;
+      this.debug(`Config changed for ${slug}, reconnecting with fresh credentials`);
+      await this.disconnect(slug);
+    }
+
+    await this.connect(slug, config);
   }
 
   /**
@@ -339,15 +377,21 @@ export class McpClientPool {
   getProxyToolDefs(slugs?: string[]): ProxyToolDef[] {
     const targetSlugs = slugs || Array.from(this.toolCache.keys());
     const defs: ProxyToolDef[] = [];
+    const seen = new Set<string>();
 
     for (const slug of targetSlugs) {
       const tools = this.toolCache.get(slug) || [];
       for (const tool of tools) {
+        const name = proxyToolName(slug, tool.name);
+        // Skip a name that collided after sanitization — keep the first, matching
+        // registerClient so the emitted defs and the dispatch map stay in sync (#864).
+        if (seen.has(name)) continue;
+        seen.add(name);
         // Strip $schema — AJV (Pi agent) fails on unregistered meta-schema URIs.
         // Same pattern as getToolDefsAsJsonSchema() in tool-defs.ts.
         const { $schema, ...cleanSchema } = (tool.inputSchema as Record<string, unknown>) || {};
         defs.push({
-          name: `mcp__${slug}__${tool.name}`,
+          name,
           description: tool.description || `Tool from ${slug}`,
           inputSchema: Object.keys(cleanSchema).length > 0 ? cleanSchema : { type: 'object', properties: {} },
         });
@@ -365,7 +409,7 @@ export class McpClientPool {
    * Execute an MCP tool by its proxy name (mcp__{slug}__{toolName}).
    * Returns a result matching the subprocess protocol format.
    */
-  async callTool(proxyName: string, args: Record<string, unknown>): Promise<McpToolResult> {
+  async callTool(proxyName: string, args: Record<string, unknown>, options?: PoolCallToolOptions): Promise<McpToolResult> {
     const info = this.proxyTools.get(proxyName);
     if (!info) {
       return {
@@ -386,7 +430,7 @@ export class McpClientPool {
     }
 
     try {
-      const result = await client.callTool(originalName, args) as {
+      const result = await client.callTool(originalName, args, options) as {
         content?: Array<{ type: string; text?: unknown; data?: string; mimeType?: string }>;
         isError?: boolean;
       };

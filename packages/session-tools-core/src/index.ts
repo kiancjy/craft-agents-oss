@@ -134,6 +134,19 @@ export type {
   SendAgentMessageResult,
   ResolvedLabelsResult,
   ResolvedStatusResult,
+  CreateTaskInput,
+  CreateTaskResult,
+  // Pages types
+  PagesToolCallbacks,
+  PageToolRefreshSpec,
+  PageToolSummary,
+  PageToolDataSummary,
+  PageToolDetails,
+  CreatePageToolInput,
+  UpdatePageToolPatch,
+  PageDataToolPatch,
+  PageDataWriteSummary,
+  DeletePageToolResult,
 } from './context.ts';
 
 export { createNodeFileSystem } from './context.ts';
@@ -167,6 +180,13 @@ export {
   handleRenderTemplate,
   // Send Developer Feedback
   handleSendDeveloperFeedback,
+  // Pages
+  handleListPages,
+  handleGetPage,
+  handleCreatePage,
+  handleUpdatePage,
+  handleWritePageData,
+  handleDeletePage,
 } from './handlers/index.ts';
 
 export type {
@@ -185,6 +205,12 @@ export type {
   ScriptSandboxArgs,
   RenderTemplateArgs,
   SendDeveloperFeedbackArgs,
+  ListPagesArgs,
+  GetPageArgs,
+  CreatePageArgs,
+  UpdatePageArgs,
+  WritePageDataArgs,
+  DeletePageArgs,
 } from './handlers/index.ts';
 
 // Tool definitions — single source of truth
@@ -206,6 +232,13 @@ export {
   BrowserToolSchema,
   // Developer feedback schema
   SendDeveloperFeedbackSchema,
+  // Pages schemas
+  ListPagesSchema,
+  GetPageSchema,
+  CreatePageSchema,
+  UpdatePageSchema,
+  WritePageDataSchema,
+  DeletePageSchema,
   // Descriptions
   TOOL_DESCRIPTIONS,
   // Registry
@@ -239,3 +272,18 @@ export type {
   SessionToolFilterOptions,
   SessionToolNameOptions,
 } from './tool-defs.ts';
+
+// Script runtime resolution + path containment (also used by the shared
+// automations script action — keep these exports runtime-only, no zod)
+export {
+  resolveScriptRuntime,
+} from './runtime/resolve-script-runtime.ts';
+export type {
+  ScriptRuntimeLanguage,
+  ResolvedScriptRuntime,
+  ResolveScriptRuntimeContext,
+} from './runtime/resolve-script-runtime.ts';
+export {
+  isPathWithinDirectory,
+  isPathWithinDirectoryForCreation,
+} from './runtime/path-security.ts';

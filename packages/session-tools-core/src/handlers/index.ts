@@ -74,3 +74,25 @@ export { handleListSessions } from './list-sessions.ts';
 export type { ListSessionsArgs } from './list-sessions.ts';
 export { handleListBackgroundTasks } from './list-background-tasks.ts';
 export type { ListBackgroundTasksArgs } from './list-background-tasks.ts';
+export { handleCreateTask } from './create-task.ts';
+export type { CreateTaskArgs } from './create-task.ts';
+export { handleArchiveSession } from './archive-session.ts';
+export type { ArchiveSessionArgs } from './archive-session.ts';
+
+// Pages
+export {
+  handleListPages,
+  handleGetPage,
+  handleCreatePage,
+  handleUpdatePage,
+  handleWritePageData,
+  handleDeletePage,
+} from './pages.ts';
+export type {
+  ListPagesArgs,
+  GetPageArgs,
+  CreatePageArgs,
+  UpdatePageArgs,
+  WritePageDataArgs,
+  DeletePageArgs,
+} from './pages.ts';

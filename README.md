@@ -33,7 +33,7 @@ We built Craft Agents because we wanted a better, more opinionated (and preferab
 **How do I connect to Linear, Gmail, Slack...?**
 Tell the agent "add Linear as a source." It finds public APIs and MCP servers, reads their docs, sets up credentials, and configures everything. No config files, no setup wizards.
 
-[Check out how I just connected to Slack →](https://agents.craft.do/s/DRNQEiy8w2e1v5LPgKl8b)
+[Check out how I just connected to Slack →](https://thecraftagents.com/s/DRNQEiy8w2e1v5LPgKl8b)
 
 **I already have my MCP config JSON.**
 Paste it. The agent handles the rest.
@@ -50,7 +50,7 @@ Craft Agents connects to anything. We have it hooked up to a direct Postgres DB 
 **How do I import my Claude Code skills and MCPs?**
 Tell the agent you want to import your skills from Claude Code. It handles the migration.
 
-[Here I imported all my skills in one go →](https://agents.craft.do/s/gWCFqwhObFWaNJIEJmd6j)
+[Here I imported all my skills in one go →](https://thecraftagents.com/s/gWCFqwhObFWaNJIEJmd6j)
 
 **How do I create a new skill?**
 Describe what the skill should do, give it context. The agent takes care of the rest.
@@ -68,12 +68,12 @@ Yes. That's the core idea behind agent-native software. You describe what you wa
 
 **macOS / Linux:**
 ```bash
-curl -fsSL https://agents.craft.do/install-app.sh | bash
+curl -fsSL https://thecraftagents.com/install-app.sh | bash
 ```
 
 **Windows (PowerShell):**
 ```powershell
-irm https://agents.craft.do/install-app.ps1 | iex
+irm https://thecraftagents.com/install-app.ps1 | iex
 ```
 
 ### Build from Source
@@ -429,10 +429,11 @@ Go to **APIs & Services → Library** and enable the APIs you need:
 
 1. Go to **APIs & Services → Credentials**
 2. Click **Create Credentials → OAuth Client ID**
-3. Application type: **Desktop app**
-4. Name: e.g., "Craft Agent Desktop"
-5. Click **Create**
-6. Note the **Client ID** and **Client Secret**
+3. Application type: **Web application** (not "Desktop app" — Craft Agent routes every OAuth flow through a hosted callback, which a Desktop-app client rejects with `redirect_uri_mismatch`)
+4. Name: e.g., "Craft Agent"
+5. Under **Authorized redirect URIs**, add: `https://thecraftagents.com/auth/callback`
+6. Click **Create**
+7. Note the **Client ID** and **Client Secret**
 
 #### 5. Configure in Craft Agent
 
@@ -550,7 +551,7 @@ Or configure manually in `~/.craft-agent/workspaces/{id}/automations.json`:
 
 **Supported events:** `LabelAdd`, `LabelRemove`, `PermissionModeChange`, `FlagChange`, `SessionStatusChange`, `SchedulerTick`, `PreToolUse`, `PostToolUse`, `SessionStart`, `SessionEnd`, and more.
 
-See the [Automations documentation](https://agents.craft.do/docs/automations/overview) for the full reference.
+See the [Automations documentation](https://thecraftagents.com/docs/automations/overview) for the full reference.
 
 ## Advanced Features
 

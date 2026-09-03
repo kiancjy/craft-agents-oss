@@ -316,6 +316,9 @@ export interface SessionToolContext {
   /** Set status on a session. Defaults to current session if no ID given. Injected by backend. */
   setSessionStatus?(sessionId: string | undefined, status: string): void | Promise<void>;
 
+  /** Archive (archived=true) or unarchive (archived=false) another session by ID. Injected by backend. */
+  archiveSession?(sessionId: string, archived: boolean): void | Promise<void>;
+
   /** Get detailed info about a session. Defaults to current session if no ID given. Injected by backend. */
   getSessionInfo?(sessionId?: string): SessionInfo | null;
 
@@ -335,6 +338,29 @@ export interface SessionToolContext {
 
   /** Resolve a status display name to its ID against configured statuses. Injected by backend. */
   resolveStatus?(status: string): ResolvedStatusResult;
+
+  /**
+   * Create a Craft Agents Task (board card + task.yaml + orchestrator session)
+   * WITHOUT running it. Slug derivation, node synthesis, and spec validation
+   * happen behind this callback where the task primitives live. Injected by
+   * backend (SessionManager); undefined in backends that don't run alongside
+   * it (e.g. the Codex MCP subprocess) — the handler degrades gracefully.
+   */
+  createTask?(input: CreateTaskInput): Promise<CreateTaskResult>;
+
+  // ============================================================
+  // Pages (list_pages / get_page / create_page / update_page /
+  //        write_page_data / delete_page)
+  // ============================================================
+
+  /**
+   * Pages tool callbacks — workspace-scoped mini dashboards. Grouped in one
+   * object (unlike the flat session-management callbacks) because the six
+   * operations always ship together. Injected by the backend (SessionManager);
+   * undefined in backends that don't run alongside it — handlers degrade
+   * gracefully.
+   */
+  pages?: PagesToolCallbacks;
 
   // ============================================================
   // Inter-Session Messaging
@@ -441,6 +467,185 @@ export interface ResolvedStatusResult {
 // ============================================================
 
 /** Full metadata for a single session (returned by get_session_info). */
+/** Input for create_task — structured fields, mapped onto a TaskSpec by the backend. */
+export interface CreateTaskInput {
+  /** Short task title shown on the board (also drives the slug). */
+  title: string;
+  /** What the task should accomplish — becomes the task goal and the initial node prompt. */
+  description: string;
+  /** Freeform rubric the final result is verified against. */
+  acceptanceCriteria?: string;
+  /** Source slugs enabled on the task's sessions. */
+  sources?: string[];
+  /** Skill slugs applied to dispatched task prompts. */
+  skills?: string[];
+  /** LLM connection slug serving `model`. */
+  llmConnection?: string;
+  /** Model id for the task's sessions (workspace default when omitted). */
+  model?: string;
+  /** Working directory for the task's sessions. */
+  workingDirectory?: string;
+  /** Project to bind the task to. Defaults to the invoking session's project. */
+  projectId?: string;
+}
+
+/** Result of create_task. */
+export interface CreateTaskResult {
+  slug: string;
+  orchestratorSessionId: string;
+  taskLabelId?: string;
+  /** Fail-soft problems (unknown source/skill slugs, label failure, …). */
+  warnings: string[];
+}
+
+// ============================================================
+// Pages Types
+// ============================================================
+// Plain JSON shapes mirroring @craft-agent/core page types — duplicated here
+// on purpose so this package stays dependency-free (same rule as
+// CreateTaskInput). The backend maps real PageConfig/LoadedPage onto these.
+
+/** Scheduled refresh spec for a page (5-field cron → workspace-relative script). */
+export interface PageToolRefreshSpec {
+  /** 5-field cron expression evaluated once per minute */
+  cron: string;
+  /** Script path relative to the workspace root (must stay within it) */
+  script: string;
+  /** Extra argv appended after the script path */
+  args?: string[];
+  /** IANA timezone for cron evaluation (system local when omitted) */
+  timezone?: string;
+  /** Per-run timeout in ms (default 60_000, clamped to [1_000, 900_000]) */
+  timeoutMs?: number;
+  /** false pauses scheduling without deleting the spec */
+  enabled?: boolean;
+}
+
+/** Compact page entry (returned by list_pages). */
+export interface PageToolSummary {
+  slug: string;
+  name: string;
+  description?: string;
+  /** 'static' | 'interactive' | 'live' */
+  kind: string;
+  projectId?: string;
+  createdAt: number;
+  updatedAt: number;
+  /** Whether index.html exists yet */
+  hasContent: boolean;
+  refresh?: PageToolRefreshSpec;
+  /** Outcome of the most recent data refresh (scheduled or agent write) */
+  lastRefresh?: { at: number; ok: boolean; durationMs: number; error?: string };
+  /** Whether the page is currently published (share link exists) */
+  shared: boolean;
+  /** Absolute path to the page folder (pages/{slug}/) */
+  folderPath: string;
+}
+
+/** Summary of a page's data snapshot (kv keys + per-series stats, not full points). */
+export interface PageToolDataSummary {
+  generatedAt: number;
+  kvKeys: string[];
+  series: Array<{ name: string; points: number; latest?: { t: number; v: number } }>;
+  /** Absolute path to data/snapshot.json — Read it for the full contents */
+  snapshotPath: string;
+}
+
+/** Full page details (returned by get_page / create_page / update_page). */
+export interface PageToolDetails extends PageToolSummary {
+  id: string;
+  /** sha256 hex of index.html (grants and render leases bind to it) */
+  contentDigest?: string;
+  /** Byte length of index.html when present */
+  contentLength?: number;
+  /** Absolute path to index.html */
+  contentPath: string;
+  /** Data snapshot summary, or null when no data has been written yet */
+  data: PageToolDataSummary | null;
+  /** Source-action grants (user-approved; stale = digest mismatch or expired) */
+  grants: Array<{
+    id: string;
+    kind: string;
+    /** Source slug for api/mcp grants (absent for script grants) */
+    sourceSlug?: string;
+    /** Workspace-relative script path for script grants (absent otherwise) */
+    script?: string;
+    description?: string;
+    expiresAt: number;
+    stale: boolean;
+  }>;
+  /** Public share URL when published */
+  shareUrl?: string;
+  /** Full index.html content (only when requested with includeContent) */
+  content?: string;
+}
+
+/** Input for create_page. */
+export interface CreatePageToolInput {
+  name: string;
+  description?: string;
+  /** 'static' | 'interactive' | 'live' (default: 'interactive') */
+  kind?: string;
+  /** Stable Project ID to bind the page to */
+  projectId?: string;
+  /** Full self-contained HTML document for index.html */
+  content?: string;
+  refresh?: PageToolRefreshSpec;
+}
+
+/** Patch for update_page — only provided fields change; null clears a field. */
+export interface UpdatePageToolPatch {
+  name?: string;
+  description?: string | null;
+  kind?: string;
+  projectId?: string | null;
+  /** Replaces index.html entirely (re-digests; existing grants go stale by design) */
+  content?: string;
+  refresh?: PageToolRefreshSpec | null;
+}
+
+/** Data mutation batch for write_page_data (applied in one transaction). */
+export interface PageDataToolPatch {
+  /** KV upserts: key → any JSON value */
+  set?: Record<string, unknown>;
+  /** KV keys to delete */
+  delete?: string[];
+  /** Timeseries appends: series name → points ({ t? epoch ms, v number }) */
+  appendSeries?: Record<string, Array<{ t?: number; v: number }>>;
+  /** Timeseries prunes: series name → deleteBefore timestamp (t < value removed) */
+  pruneSeries?: Record<string, number>;
+}
+
+/** Result of write_page_data. */
+export interface PageDataWriteSummary {
+  slug: string;
+  kvCount: number;
+  seriesCount: number;
+  generatedAt: number;
+  snapshotPath: string;
+  durationMs: number;
+}
+
+/** Result of delete_page. */
+export interface DeletePageToolResult {
+  deleted: true;
+  /** True when the page was published and the remote copy may still exist */
+  publicCopyMayRemain: boolean;
+}
+
+/**
+ * Pages tool callbacks, injected by the backend (SessionManager). All storage
+ * logic lives behind these — this package never touches pages/ directly.
+ */
+export interface PagesToolCallbacks {
+  listPages(): PageToolSummary[] | Promise<PageToolSummary[]>;
+  getPage(slug: string, options?: { includeContent?: boolean }): PageToolDetails | null | Promise<PageToolDetails | null>;
+  createPage(input: CreatePageToolInput): Promise<PageToolDetails>;
+  updatePage(slug: string, patch: UpdatePageToolPatch): Promise<PageToolDetails>;
+  writePageData(slug: string, patch: PageDataToolPatch): Promise<PageDataWriteSummary>;
+  deletePage(slug: string): Promise<DeletePageToolResult>;
+}
+
 export interface SessionInfo {
   id: string;
   name: string;

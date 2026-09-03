@@ -21,6 +21,7 @@ import {
   resolveAuthEnvVars,
 } from '../config/llm-connections.ts';
 import type { McpClientPool } from '../mcp/mcp-pool.ts';
+import { proxyToolName } from '../mcp/proxy-tool-name.ts';
 import { loadPlanFromPath, type SessionConfig as Session } from '../sessions/storage.ts';
 import { loadProjectById, getProjectAssetsPath, listProjectAssets, getProjectMemoryPath, loadProjectMemory } from '../projects/storage.ts';
 import { DEFAULT_MODEL, isClaudeModel, isAdaptiveThinkingAlwaysOnModel, getDefaultSummarizationModel, getModelContextWindow } from '../config/models.ts';
@@ -33,6 +34,7 @@ import { debug } from '../utils/debug.ts';
 import { guardLargeResult } from '../utils/large-response.ts';
 import { SourceActivationDrainController } from './source-activation-drain.ts';
 import { resolveKeepBackgroundTasksAlive, createPushableInputStream, type PushableInputStream } from './backend/claude/persistent-input.ts';
+import { classifyClaudeTaskNotification } from './backend/claude/task-notification.ts';
 import {
   getSessionPlansDir,
   getLastPlanFilePath,
@@ -439,7 +441,9 @@ function createSourceProxyServers(pool: McpClientPool): Record<string, ReturnTyp
     if (mcpTools.length === 0) continue;
 
     const proxyTools = mcpTools.map(mcpTool => {
-      const proxyName = `mcp__${slug}__${mcpTool.name}`;
+      // Must match the pool's dispatch-map key (mcp-pool.ts sanitizes dotted
+      // names), or pool.callTool(proxyName) would miss for dotted tools (#864).
+      const proxyName = proxyToolName(slug, mcpTool.name);
       return tool(
         mcpTool.name,
         mcpTool.description || `Tool from ${slug}`,
@@ -628,31 +632,42 @@ export class ClaudeAgent extends BaseAgent {
    * Convert a between-turns background SDK message to an AgentEvent and emit it
    * via `onBackgroundEvent`. Only terminal task notifications are forwarded (the
    * important signal — completion/failure); progress ticks between turns are
-   * cosmetic (the UI derives elapsed from startTime). Standalone mapper so it
-   * doesn't disturb the turn-scoped event adapter. Mirrors event-adapter.ts:544.
+   * cosmetic (the UI derives elapsed from startTime). Uses the same notification
+   * classifier as the turn-scoped event adapter so validation cannot drift.
    */
   private routeBackgroundMessage(message: SDKMessage): void {
+    const classification = classifyClaudeTaskNotification(message);
+    if (classification.kind === 'valid') {
+      this.onBackgroundEvent?.({
+        type: 'task_completed',
+        taskId: classification.notification.taskId,
+        status: classification.notification.status,
+        ...(classification.notification.outputFile ? { outputFile: classification.notification.outputFile } : {}),
+        ...(classification.notification.summary ? { summary: classification.notification.summary } : {}),
+      });
+      return;
+    }
+
     const msg = message as unknown as {
       type?: string;
       subtype?: string;
-      task_id?: string;
       status?: string;
-      output_file?: string;
-      summary?: string;
     };
-    if (msg?.type === 'system' && msg.subtype === 'task_notification' && msg.task_id) {
-      const status: 'completed' | 'failed' | 'stopped' =
-        msg.status === 'failed' || msg.status === 'stopped' ? msg.status : 'completed';
-      this.onBackgroundEvent?.({
-        type: 'task_completed',
-        taskId: msg.task_id,
-        status,
-        ...(msg.output_file ? { outputFile: msg.output_file } : {}),
-        ...(msg.summary ? { summary: msg.summary } : {}),
+    if (classification.kind === 'missing-task-id') {
+      // This malformed terminal notification is the one dropped-message shape
+      // that can strand a task chip. Keep the warning metadata-only.
+      console.warn('[bg-lifecycle] task_notification missing task_id', {
+        type: msg?.type,
+        subtype: msg?.subtype,
+        status: msg?.status,
       });
-    } else {
-      this.debug(`[bg-lifecycle] dropping unexpected between-turns message: ${msg?.type}/${msg?.subtype ?? ''}`);
+      return;
     }
+
+    // Progress and other between-turn SDK traffic is expected and intentionally
+    // ignored; keep it at debug level so normal background work does not flood
+    // warning logs and hide the malformed notification above.
+    this.debug(`[bg-lifecycle] dropping expected between-turns message: ${msg?.type}/${msg?.subtype ?? ''}`);
   }
 
   /** Wire the between-turns background-event sink (SessionManager forwards to registry/renderer). */
@@ -1080,12 +1095,6 @@ export class ClaudeAgent extends BaseAgent {
       const fullMcpServers: Options['mcpServers'] = {
         // Session-scoped tools (SubmitPlan, source_test, update_user_preferences, transform_data, etc.)
         session: getSessionScopedTools(sessionId, this.workspaceRootPath),
-        // Craft Agents documentation - always available for searching setup guides
-        // This is a public Mintlify MCP server, no auth needed
-        'craft-agents-docs': {
-          type: 'http',
-          url: 'https://agents.craft.do/docs/mcp',
-        },
         // Per-source proxy servers from centralized MCP pool (MCP + API sources)
         // Each source gets its own SDK server keyed by slug (e.g., 'linear', 'github', 'gmail')
         // so the SDK produces correct tool names: mcp__{slug}__{toolName}
@@ -1571,12 +1580,10 @@ export class ClaudeAgent extends BaseAgent {
               }
             : {}),
         mcpServers,
-        // NOTE: This callback is NOT called by the SDK because we set `permissionMode: 'bypassPermissions'` above.
+        // No `canUseTool`: `permissionMode: 'bypassPermissions'` shadows it (SDK never calls it,
+        // and since SDK 0.3.198 the combination triggers a runtime warning on every query).
         // All permission logic is handled via the PreToolUse hook instead (see hooks.PreToolUse above).
         // Bash permission logic is in PreToolUse where it actually executes.
-        canUseTool: async (_toolName, input) => {
-          return { behavior: 'allow' as const, updatedInput: input as Record<string, unknown> };
-        },
         // Selectively disable tools - file tools are disabled (use MCP), web/code controlled by settings
         disallowedTools,
         // No plugins — skills are handled by BaseAgent.chat() via read-before-execute
