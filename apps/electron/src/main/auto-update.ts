@@ -16,7 +16,7 @@
 
 import { autoUpdater } from 'electron-updater'
 import { app, BrowserWindow } from 'electron'
-import { platform } from 'os'
+import { platform, homedir } from 'os'
 import * as path from 'path'
 import * as fs from 'fs'
 import { mainLog, autoUpdateLog } from './logger'
@@ -33,6 +33,22 @@ import type { EventSink } from '@craft-agent/server-core/transport'
 const PLATFORM = platform()
 const IS_MAC = PLATFORM === 'darwin'
 const IS_WINDOWS = PLATFORM === 'win32'
+
+// Machine-level auto-update kill switch. When armed, no update check ever runs,
+// so a locally built app is never replaced by the upstream feed. Every trigger
+// path (launch check, menu item, renderer IPC) funnels through checkForUpdates(),
+// which is gated on this. Remove the flag file to re-enable updates — the next
+// launch will then pull upstream and discard any custom build.
+const AUTO_UPDATE_DISABLE_FLAG = path.join(homedir(), '.craft-agent', 'disable-auto-update')
+
+export function isAutoUpdateDisabled(): boolean {
+  if (process.env.CRAFT_DISABLE_AUTO_UPDATE === '1') return true
+  try {
+    return fs.existsSync(AUTO_UPDATE_DISABLE_FLAG)
+  } catch {
+    return false
+  }
+}
 
 // Get the update cache directory path (for file watcher fallback on macOS)
 // electron-updater uses these paths:
@@ -357,6 +373,20 @@ function checkForExistingDownload(): { exists: boolean; version?: string } {
  * @param options.autoDownload - If false, only checks without downloading (for manual "Check Now")
  */
 export async function checkForUpdates(options: CheckOptions = {}): Promise<UpdateInfo> {
+  if (isAutoUpdateDisabled()) {
+    autoUpdateLog.info(
+      `Auto-update is disabled on this machine (${AUTO_UPDATE_DISABLE_FLAG} or CRAFT_DISABLE_AUTO_UPDATE=1); skipping check`
+    )
+    updateInfo = {
+      ...updateInfo,
+      available: false,
+      downloadState: 'error',
+      error: 'Auto-update is disabled on this machine',
+    }
+    broadcastUpdateInfo()
+    return getUpdateInfo()
+  }
+
   const { autoDownload = true } = options
 
   // Temporarily override autoDownload for this check if needed
