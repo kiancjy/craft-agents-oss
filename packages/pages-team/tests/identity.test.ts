@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { AccessVerifier, TeamIdentityResolver, cameThroughCloudflare, nameFromEmail } from '../src/identity.ts'
+import { AccessVerifier, NameResolver, TeamIdentityResolver, cameThroughCloudflare, nameFromEmail } from '../src/identity.ts'
 
 const TEAM = 'incredible.cloudflareaccess.com'
 const AUD = 'aud-tag-123'
@@ -117,5 +117,26 @@ describe('TeamIdentityResolver', () => {
     expect(nameFromEmail('yas.khan@getincredible.com')).toBe('Yas Khan')
     expect(cameThroughCloudflare(new Headers({ 'cf-connecting-ip': '1.2.3.4' }))).toBe(true)
     expect(cameThroughCloudflare(new Headers({}))).toBe(false)
+  })
+})
+
+describe('NameResolver', () => {
+  test('uses the Google name from the app address when the email matches', async () => {
+    const calls: string[] = []
+    const fetchImpl = async (url: string, init?: RequestInit) => {
+      calls.push(`${url} ${(init?.headers as Record<string, string>).cookie}`)
+      return Response.json({ email: 'yas@getincredible.com', name: 'Yasmin Khan' })
+    }
+    const r = new NameResolver('https://pages.getincredible.com', fetchImpl)
+    expect(await r.resolve('yas@getincredible.com', 'tok')).toBe('Yasmin Khan')
+    expect(await r.resolve('yas@getincredible.com', 'tok')).toBe('Yasmin Khan')
+    expect(calls).toEqual(['https://pages.getincredible.com/cdn-cgi/access/get-identity CF_Authorization=tok'])
+  })
+
+  test('falls back to the email name on a mismatch or an error', async () => {
+    const other = new NameResolver('https://p', async () => Response.json({ email: 'someone@else.com', name: 'X' }))
+    expect(await other.resolve('yas@getincredible.com', 'tok')).toBe('Yas')
+    const failing = new NameResolver('https://p', async () => { throw new Error('down') })
+    expect(await failing.resolve('ben.lee@getincredible.com', 'tok')).toBe('Ben Lee')
   })
 })

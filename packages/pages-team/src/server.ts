@@ -99,7 +99,8 @@ export function createHandlers(options: CreateHandlersOptions) {
     publicUrl: config.publicUrl,
   })
   const resolver =
-    options.resolver ?? new TeamIdentityResolver({ access: config.access, devIdentity: config.devIdentity })
+    options.resolver ??
+    new TeamIdentityResolver({ access: config.access, devIdentity: config.devIdentity, publicUrl: config.publicUrl })
 
   function parseUrl(req: Request): URL | null {
     try {

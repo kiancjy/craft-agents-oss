@@ -154,14 +154,16 @@ export function nameFromEmail(email: string): string {
 }
 
 /**
- * Best-effort full name from Cloudflare Access (the Google profile name).
+ * Best-effort full name from Cloudflare Access (the Google profile name),
+ * from `/cdn-cgi/access/get-identity` on the application's own address.
  * Falls back to the email-derived name. Cached for one hour per email.
  */
 export class NameResolver {
   private cache = new Map<string, { name: string; at: number }>()
 
   constructor(
-    private readonly teamDomain: string | null,
+    /** e.g. https://pages.getincredible.com — null disables the lookup */
+    private readonly appUrl: string | null,
     private readonly fetchImpl: FetchLike = fetch,
     private readonly now: () => number = Date.now,
   ) {}
@@ -170,9 +172,9 @@ export class NameResolver {
     const hit = this.cache.get(email)
     if (hit && this.now() - hit.at < JWKS_TTL_MS) return hit.name
     let name = nameFromEmail(email)
-    if (this.teamDomain && token) {
+    if (this.appUrl && token) {
       try {
-        const res = await this.fetchImpl(`https://${this.teamDomain}/cdn-cgi/access/get-identity`, {
+        const res = await this.fetchImpl(`${this.appUrl}/cdn-cgi/access/get-identity`, {
           headers: { cookie: `CF_Authorization=${token}` },
           signal: AbortSignal.timeout(2000),
         })
@@ -201,6 +203,8 @@ export function cameThroughCloudflare(headers: Headers): boolean {
 export interface IdentityResolverOptions {
   access: AccessConfig | null
   devIdentity: boolean
+  /** The team link address, for the name lookup */
+  publicUrl?: string | null
   fetchImpl?: FetchLike
   now?: () => number
 }
@@ -212,7 +216,7 @@ export class TeamIdentityResolver {
 
   constructor(private readonly options: IdentityResolverOptions) {
     this.verifier = options.access ? new AccessVerifier(options.access, options.fetchImpl, options.now) : null
-    this.names = new NameResolver(options.access?.teamDomain ?? null, options.fetchImpl, options.now)
+    this.names = new NameResolver(options.access ? options.publicUrl ?? null : null, options.fetchImpl, options.now)
   }
 
   async resolve(req: Request): Promise<Identity | null> {
