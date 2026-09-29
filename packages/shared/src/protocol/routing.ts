@@ -452,6 +452,8 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.pages.GET_THUMBNAIL,
   RPC_CHANNELS.pages.REGENERATE_THUMBNAIL,
   RPC_CHANNELS.pages.CHANGED,
+  // Team access for Pages (fork addition): the team server runs beside the workspace server
+  RPC_CHANNELS.pagesTeam.CALL,
 
   // git — workspace filesystem
   RPC_CHANNELS.git.GET_BRANCH,
