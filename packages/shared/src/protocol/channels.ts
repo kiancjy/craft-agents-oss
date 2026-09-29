@@ -429,6 +429,10 @@ export const RPC_CHANNELS = {
     REGENERATE_THUMBNAIL: 'pages:regenerateThumbnail',
     CHANGED: 'pages:changed',
   },
+  // Team access for Pages (fork addition): proxy to the team server's owner port
+  pagesTeam: {
+    CALL: 'pagesTeam:call',
+  },
   messaging: {
     // WhatsApp subprocess → Gateway (subprocess invokes on server)
     WA_REGISTER: 'messaging:wa:register',

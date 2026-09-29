@@ -27,6 +27,7 @@ import { DeletePageDialog } from './DeletePageDialog'
 import { PageGrantsDialog } from './PageGrantsDialog'
 import { PageSourceAuthBanner } from './PageSourceAuthBanner'
 import { SharePageDialog, usePageShareCapabilities } from './SharePageDialog'
+import { TeamCommentsButton, TeamCommentsPanel } from './team/TeamCommentsPanel'
 
 interface PageViewProps {
   pageSlug: string
@@ -278,6 +279,7 @@ export function PageView({ pageSlug }: PageViewProps) {
         <PageKindBadge kind={config.kind} />
         <PageFreshness config={config} className="hidden @[28rem]/panel:inline-flex" />
         <div className="ml-auto flex items-center gap-1">
+          {activeWorkspaceId && <TeamCommentsButton workspaceId={activeWorkspaceId} pageSlug={config.slug} />}
           {(sharingEnabled || config.share) && (
             <button
               type="button"
@@ -384,6 +386,7 @@ export function PageView({ pageSlug }: PageViewProps) {
       )}
 
       {/* Body: edge-to-edge sandboxed frame on a neutral canvas */}
+      <div className="flex min-h-0 flex-1">
       <div className="relative min-h-0 flex-1 p-3">
         {!hasContent ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
@@ -437,6 +440,8 @@ export function PageView({ pageSlug }: PageViewProps) {
             />
           </div>
         )}
+      </div>
+      {activeWorkspaceId && <TeamCommentsPanel workspaceId={activeWorkspaceId} pageSlug={config.slug} />}
       </div>
 
       <DeletePageDialog

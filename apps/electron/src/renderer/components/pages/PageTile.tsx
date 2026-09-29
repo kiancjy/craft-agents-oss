@@ -12,6 +12,7 @@ import {
 import type { LoadedPage } from '@craft-agent/shared/pages/types'
 import { PAGE_KIND_ICONS, PageFreshness, PageKindBadge } from './page-visuals'
 import { useInView } from '@/hooks/useInView'
+import { TeamThreadBadge } from './team/TeamThreadBadge'
 
 export interface PageTileProject {
   name: string
@@ -147,6 +148,7 @@ export function PageTile({ page, project, onOpen, onDelete }: PageTileProps) {
                 </span>
               )}
               <span className="ml-auto inline-flex items-center gap-2">
+                <TeamThreadBadge workspaceId={page.workspaceId} pageSlug={config.slug} />
                 {config.share && (
                   <span
                     className="inline-flex items-center text-foreground/45"

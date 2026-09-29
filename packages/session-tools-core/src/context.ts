@@ -578,6 +578,8 @@ export interface PageToolDetails extends PageToolSummary {
   shareUrl?: string;
   /** Full index.html content (only when requested with includeContent) */
   content?: string;
+  /** Team access (fork addition): comment threads and people, when the team server runs */
+  team?: object;
 }
 
 /** Input for create_page. */

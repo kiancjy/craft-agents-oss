@@ -418,6 +418,7 @@ export const CHANNEL_MAP = {
   getPageThumbnail: invoke(RPC_CHANNELS.pages.GET_THUMBNAIL),
   regeneratePageThumbnail: invoke(RPC_CHANNELS.pages.REGENERATE_THUMBNAIL),
   onPagesChanged: listener(RPC_CHANNELS.pages.CHANGED),
+  pagesTeamCall: invoke(RPC_CHANNELS.pagesTeam.CALL),
 
   // Automations
   getAutomations: invoke(RPC_CHANNELS.automations.GET),

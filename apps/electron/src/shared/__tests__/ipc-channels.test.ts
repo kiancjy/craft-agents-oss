@@ -205,6 +205,7 @@ const EXPECTED_CHANNELS: string[] = [
   'pages:setPublicationPassword',
   'pages:unpublish',
   'pages:update',
+  'pagesTeam:call',
   'permissions:defaultsChanged',
   'permissions:getDefaults',
   'pi:getApiKeyProviders',

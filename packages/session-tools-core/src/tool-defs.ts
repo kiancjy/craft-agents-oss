@@ -568,6 +568,8 @@ Returns compact summaries: slug, name, kind (static/interactive/live), project, 
 
   get_page: `Get full details for one Page by slug: config, content digest/length/path, a data summary (KV keys + per-series point counts and latest values), source-action grants, and share state.
 
+When team access is set up, the response also has a \`team\` block: the team link, the people and their roles, and the comment threads from the team (open threads in full, recent resolved threads). Use it to answer questions about comments on a page.
+
 The response includes absolute paths (contentPath, data.snapshotPath) — Read those files for the full HTML or the complete data snapshot. Pass includeContent: true only when you need the HTML inline.`,
 
   create_page: `Create a new Page: a persistent, self-contained HTML document stored at pages/{slug}/ in the workspace, shown as a tile in the app's Pages section, and rendered in a sandboxed iframe.

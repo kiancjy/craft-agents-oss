@@ -18,6 +18,7 @@ import { Info_Alert } from '@/components/info'
 import type { LoadedPage, PageActionGrant } from '@craft-agent/shared/pages/types'
 import { isPageGrantUsable } from '@craft-agent/shared/pages/types'
 import { describeGrantAction, useGrantRemoval } from './grant-visuals'
+import { TeamAccessSection } from './team/TeamAccessSection'
 
 /**
  * Share dialog: publish / republish / password management / unpublish.
@@ -378,6 +379,8 @@ export function SharePageDialog({
             )}
           </div>
         )}
+
+        <TeamAccessSection workspaceId={workspaceId} page={page} />
 
         <DialogFooter className="gap-2 sm:gap-2">
           {share ? (

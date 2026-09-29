@@ -18,6 +18,7 @@ export { getHealthCheck } from './server'
 import { registerSettingsHandlers } from './settings'
 import { registerProjectsHandlers } from './projects'
 import { registerPagesHandlers } from './pages'
+import { registerPagesTeamHandlers } from './pages-team'
 import { registerSkillsHandlers } from './skills'
 import { registerSourcesHandlers } from './sources'
 import { registerStatusesHandlers } from './statuses'
@@ -45,6 +46,7 @@ export function registerCoreRpcHandlers(
   registerSettingsHandlers(server, deps)
   registerProjectsHandlers(server, deps)
   registerPagesHandlers(server, deps)
+  registerPagesTeamHandlers(server)
   registerSkillsHandlers(server, deps)
   registerSourcesHandlers(server, deps)
   registerStatusesHandlers(server, deps)

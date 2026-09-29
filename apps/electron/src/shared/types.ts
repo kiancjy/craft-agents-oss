@@ -698,6 +698,8 @@ export interface ElectronAPI {
   /** Request a (re)capture of a page's poster (no-op on hosts without a capturer). */
   regeneratePageThumbnail(workspaceId: string, pageSlug: string): Promise<boolean>
   onPagesChanged(callback: (workspaceId: string, pages: import('@craft-agent/shared/pages/types').LoadedPage[]) => void): () => void
+  /** Team access for Pages (fork addition): one call to the team server's owner port */
+  pagesTeamCall(workspaceId: string, method: string, path: string, body?: unknown): Promise<import('@craft-agent/pages-team/owner-client').OwnerCallResult>
 
   // Automations
   getAutomations(workspaceId: string): Promise<unknown>

@@ -25,6 +25,7 @@ import type {
 } from '@craft-agent/session-tools-core'
 import type { LoadedPage, PageConfig, PageDataSnapshot, PageKind, PageRefreshSpec, UpdatePagePatch } from '@craft-agent/shared/pages'
 import { isPageGrantUsable } from '@craft-agent/shared/pages/types'
+import { loadPageTeamDetails } from './team-details'
 
 export interface PagesToolCallbacksDeps {
   workspaceId: string
@@ -160,7 +161,10 @@ export function buildPagesToolCallbacks(deps: PagesToolCallbacksDeps): PagesTool
     },
 
     async getPage(slug: string, options?: { includeContent?: boolean }): Promise<PageToolDetails | null> {
-      return loadDetails(slug, options?.includeContent === true)
+      const details = await loadDetails(slug, options?.includeContent === true)
+      // Team access (fork addition): threads and people, when the team server runs
+      const team = details ? await loadPageTeamDetails(workspaceRootPath, details.slug) : undefined
+      return details && team ? { ...details, team } : details
     },
 
     async createPage(input: CreatePageToolInput): Promise<PageToolDetails> {
