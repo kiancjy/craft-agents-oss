@@ -1,0 +1,23 @@
+{
+  "name": "@craft-agent/pages-team",
+  "version": "0.13.0",
+  "license": "Apache-2.0",
+  "description": "Team access for Pages: a separate server with Google sign-in, roles, and comment threads",
+  "type": "module",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./owner-client": "./src/owner-client.ts",
+    "./roles": "./src/roles.ts"
+  },
+  "scripts": {
+    "start": "bun run src/server.ts",
+    "test": "bun test tests",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  }
+}

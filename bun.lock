@@ -261,6 +261,13 @@
         "typescript": "^5.8.2",
       },
     },
+    "packages/pages-team": {
+      "name": "@craft-agent/pages-team",
+      "version": "0.13.0",
+      "devDependencies": {
+        "typescript": "^5.8.2",
+      },
+    },
     "packages/pi-agent-server": {
       "name": "@craft-agent/pi-agent-server",
       "version": "0.13.0",
@@ -639,6 +646,8 @@
     "@craft-agent/messaging-gateway": ["@craft-agent/messaging-gateway@workspace:packages/messaging-gateway"],
 
     "@craft-agent/messaging-whatsapp-worker": ["@craft-agent/messaging-whatsapp-worker@workspace:packages/messaging-whatsapp-worker"],
+
+    "@craft-agent/pages-team": ["@craft-agent/pages-team@workspace:packages/pages-team"],
 
     "@craft-agent/pi-agent-server": ["@craft-agent/pi-agent-server@workspace:packages/pi-agent-server"],
 
