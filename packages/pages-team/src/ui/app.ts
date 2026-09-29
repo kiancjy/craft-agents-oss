@@ -493,11 +493,12 @@ class PageApp {
     )
   }
 
-  private async mutate<T>(method: string, path: string, body?: unknown): Promise<ApiResult<T>> {
+  /** `inline`: the caller shows the error next to the input, so no banner. */
+  private async mutate<T>(method: string, path: string, body?: unknown, inline = false): Promise<ApiResult<T>> {
     const result = await api<T>(method, `${this.base()}${path}`, body)
     if (result.ok) await this.refreshState()
     else if (result.code === 'no-access' || result.code === 'page-not-found') await this.poll()
-    else this.setBanner('action-error', result.message, 'warn')
+    else if (!inline || result.code !== 'network') this.setBanner('action-error', result.message, 'warn')
     return result
   }
 
@@ -519,7 +520,7 @@ class PageApp {
       { class: 'panel-inner' },
       h('h2', {}, 'Comments'),
       can.comment
-        ? this.composer('new', 'Add a comment', 'Comment', async text => (await this.mutate('POST', '/threads', { body: text })).ok)
+        ? this.composer('new', 'Add a comment', 'Comment', async text => (await this.mutate('POST', '/threads', { body: text }, true)).ok)
         : h('p', { class: 'muted small' }, 'Your role can read comments. Ask an Admin for the Commenter role to write.'),
       open.length === 0 ? h('p', { class: 'muted small' }, 'No open comments.') : null,
       ...open.map(t => this.renderThread(t)),
@@ -565,7 +566,7 @@ class PageApp {
           : null,
       ),
       !isResolved && me.can.comment
-        ? this.composer(t.id, 'Reply', 'Reply', async text => (await this.mutate('POST', `/threads/${t.id}/replies`, { body: text })).ok)
+        ? this.composer(t.id, 'Reply', 'Reply', async text => (await this.mutate('POST', `/threads/${t.id}/replies`, { body: text }, true)).ok)
         : null,
     )
   }
@@ -590,7 +591,7 @@ class PageApp {
         { class: 'comment' },
         meta,
         this.composer(key, 'Edit comment', 'Save', async text => {
-          const ok = (await this.mutate('PATCH', `/comments/${c.id}`, { body: text })).ok
+          const ok = (await this.mutate('PATCH', `/comments/${c.id}`, { body: text }, true)).ok
           if (ok) this.editing = null
           return ok
         }),
