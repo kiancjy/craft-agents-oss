@@ -1,0 +1,28 @@
+# Team access for Pages — the team server (ports 9200 and 9201, local address only).
+# Install: cp pages-team.service ~/.config/systemd/user/ && systemctl --user daemon-reload
+# Start:   systemctl --user enable --now pages-team
+# Log:     tail -f ~/.local/state/craft-agents/pages-team.log
+#
+# This unit never sets PAGES_TEAM_DEV_IDENTITY. The test identity is for
+# local tests only.
+
+[Unit]
+Description=Craft Agents team access for Pages (localhost:9200 team, localhost:9201 owner)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/kian/craft-agents-oss/packages/pages-team
+EnvironmentFile=/home/kian/.config/craft-agents/pages-team.env
+Environment=PATH=/home/kian/.bun/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/kian/.bun/bin/bun run src/server.ts
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+UMask=0077
+StandardOutput=append:/home/kian/.local/state/craft-agents/pages-team.log
+StandardError=append:/home/kian/.local/state/craft-agents/pages-team.log
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,24 @@
+# Team access for Pages — the Cloudflare tunnel to the team port.
+# The tunnel token lives in a mode-600 file, never in this unit.
+# Install: cp cloudflared-pages.service ~/.config/systemd/user/ && systemctl --user daemon-reload
+# Start:   systemctl --user enable --now cloudflared-pages
+#
+# In the Cloudflare dashboard, the tunnel's public hostname must point to
+# http://127.0.0.1:9200 (the team port). Never point it to 9201 or 9100.
+
+[Unit]
+Description=Cloudflare tunnel for Pages team access (to localhost:9200)
+After=network-online.target pages-team.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate run --token-file /home/kian/.config/craft-agents/cloudflared-pages.token
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+StandardOutput=append:/home/kian/.local/state/craft-agents/cloudflared-pages.log
+StandardError=append:/home/kian/.local/state/craft-agents/cloudflared-pages.log
+
+[Install]
+WantedBy=default.target
