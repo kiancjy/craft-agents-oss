@@ -36,6 +36,8 @@ import { PDFPreviewOverlay } from '../overlay/PDFPreviewOverlay'
 import { ItemNavigator } from '../overlay/ItemNavigator'
 import { usePlatform } from '../../context/PlatformContext'
 import { useTranslation } from 'react-i18next'
+import { ArtifactOpenButton, useArtifactRef } from './ArtifactOpenButton'
+import type { BlockPresentation } from './artifact-ref'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 
@@ -79,11 +81,15 @@ export interface MarkdownPdfBlockProps {
   code: string
   className?: string
   onCreateRegionAnnotation?: (region: { page?: number; x: number; y: number; w: number; h: number; unit: 'pixel' | 'percent' }) => void
+  presentation?: BlockPresentation
 }
 
-export function MarkdownPdfBlock({ code, className, onCreateRegionAnnotation: _onCreateRegionAnnotation }: MarkdownPdfBlockProps) {
+export function MarkdownPdfBlock({ code, className, onCreateRegionAnnotation: _onCreateRegionAnnotation, presentation = 'inline' }: MarkdownPdfBlockProps) {
   const { t } = useTranslation()
   const { onReadFileBinary } = usePlatform()
+  const artifact = useArtifactRef('pdf-preview', code, presentation)
+  const inPane = presentation === 'pane'
+  const [pageCount, setPageCount] = React.useState(1)
 
   // Parse the JSON spec — supports single src or items array
   const spec = React.useMemo<PdfPreviewSpec | null>(() => {
@@ -169,16 +175,17 @@ export function MarkdownPdfBlock({ code, className, onCreateRegionAnnotation: _o
 
   return (
     <PdfBlockErrorBoundary fallback={fallback}>
-      <div className={cn('relative group rounded-[8px] overflow-hidden border bg-muted/10', className)}>
+      <div className={cn('relative group rounded-[8px] overflow-hidden border bg-muted/10', inPane && 'h-full flex flex-col rounded-none border-0', className)}>
         {/* Header */}
-        <div className="px-3 py-2 bg-muted/50 border-b flex items-center gap-2">
+        {!inPane && <div className="px-3 py-2 bg-muted/50 border-b flex items-center gap-2">
           <FileText className="w-3.5 h-3.5 text-muted-foreground/50" />
           <span className="text-[12px] text-muted-foreground font-medium flex-1">
             {spec.title || t('preview.pdfPreview')}
           </span>
           <div className="flex items-center gap-1">
             <ItemNavigator items={items} activeIndex={activeIndex} onSelect={setActiveIndex} />
-            <button
+            <ArtifactOpenButton artifact={artifact} alwaysVisible={hasMultiple} />
+            {!inPane && <button
               onClick={() => setIsFullscreen(true)}
               className={cn(
                 "p-1 rounded-[6px] transition-all select-none",
@@ -190,26 +197,35 @@ export function MarkdownPdfBlock({ code, className, onCreateRegionAnnotation: _o
               title={t('common.viewFullscreen')}
             >
               <Maximize2 className="w-3.5 h-3.5" />
-            </button>
+            </button>}
           </div>
-        </div>
+        </div>}
 
         {/* Content area: fixed height prevents layout shift on item switch */}
-        <div className="relative h-[400px] overflow-hidden">
+        <div className={cn('relative', inPane ? 'flex-1 min-h-0 overflow-auto' : 'h-[400px] overflow-hidden')}>
           {/* Active Document (only one mounted at a time) */}
           {activeFileObj && (
             <div className="flex items-start justify-center bg-white p-4">
               <Document
                 file={activeFileObj}
+                onLoadSuccess={inPane ? ({ numPages }) => setPageCount(numPages) : undefined}
                 loading={<div className="py-8 text-center text-muted-foreground text-[13px]">{t('common.rendering')}</div>}
                 error={<div className="py-6 text-center text-destructive/70 text-[13px]">{t('preview.failedToRenderPdf')}</div>}
               >
-                <Page
-                  pageNumber={1}
-                  renderTextLayer={false}
-                  renderAnnotationLayer={false}
-                  width={500}
-                />
+                {inPane ? (
+                  <div className="flex flex-col gap-4">
+                    {Array.from({ length: pageCount }, (_, i) => (
+                      <Page key={i + 1} pageNumber={i + 1} renderTextLayer={false} renderAnnotationLayer={false} width={640} />
+                    ))}
+                  </div>
+                ) : (
+                  <Page
+                    pageNumber={1}
+                    renderTextLayer={false}
+                    renderAnnotationLayer={false}
+                    width={500}
+                  />
+                )}
               </Document>
             </div>
           )}

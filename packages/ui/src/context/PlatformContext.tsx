@@ -11,6 +11,7 @@
  */
 
 import { createContext, useContext, type ReactNode } from 'react'
+import type { ArtifactRef } from '../components/markdown/artifact-ref'
 
 /**
  * Platform-specific actions that components may need
@@ -113,6 +114,18 @@ export interface PlatformActions {
    * No-op on non-macOS platforms or in web viewer.
    */
   onSetTrafficLightsVisible?: (visible: boolean) => void
+
+  /**
+   * Open a rendered block (html, markdown, pdf, image, mermaid, datatable, spreadsheet)
+   * in the artifact pane beside the chat. Blocks hide their open button when undefined.
+   */
+  onOpenArtifact?: (artifact: ArtifactRef) => void
+
+  /**
+   * Record that a block was rendered so the artifact pane can list it without the
+   * user opening it first. Called on mount and when the block content changes.
+   */
+  onRegisterArtifact?: (artifact: ArtifactRef) => void
 }
 
 const PlatformContext = createContext<PlatformActions>({})

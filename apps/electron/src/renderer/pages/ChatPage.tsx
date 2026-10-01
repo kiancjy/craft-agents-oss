@@ -8,6 +8,7 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtomValue, useSetAtom } from 'jotai'
+import { PlatformProvider, usePlatform, type ArtifactRef } from '@craft-agent/ui'
 import { AlertCircle, Globe, Copy, RefreshCw, Link2Off, Info, Pencil } from 'lucide-react'
 import { ChatDisplay, type ChatDisplayHandle } from '@/components/app-shell/ChatDisplay'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
@@ -26,6 +27,9 @@ import { coerceInputText } from '@/lib/input-text'
 import { deriveSessionMessagesLoadState, formatSessionLoadFailure } from '@/lib/session-load'
 import { ensureSessionMessagesLoadedAtom, forceSessionMessagesReloadAtom, loadedSessionsAtom, sessionMetaMapAtom } from '@/atoms/sessions'
 import { kanbanEditorTargetAtom } from '@/atoms/kanban'
+import { artifactPaneAtomFamily, openArtifactAtom, registerArtifactAtom } from '@/atoms/artifact-pane'
+import { ArtifactPane } from '@/components/artifact-pane/ArtifactPane'
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { getSessionTitle } from '@/utils/session'
 // Model resolution: connection.defaultModel (no hardcoded defaults)
 import { resolveEffectiveConnectionSlug, isSessionConnectionUnavailable } from '@config/llm-connections'
@@ -261,6 +265,21 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
     inputValueRef.current = nextText
     onInputChange(sessionId, nextText)
   }, [sessionId, onInputChange])
+
+  const platformActions = usePlatform()
+  const openArtifact = useSetAtom(openArtifactAtom)
+  const registerArtifact = useSetAtom(registerArtifactAtom)
+  const artifactPane = useAtomValue(artifactPaneAtomFamily(sessionId))
+  const artifactPaneOpen = artifactPane.open && artifactPane.activeKey !== null && !isCompactMode
+  const sessionPlatformActions = React.useMemo(() => ({
+    ...platformActions,
+    onOpenArtifact: (ref: ArtifactRef) => openArtifact({ sessionId, ref }),
+    onRegisterArtifact: (ref: ArtifactRef) => registerArtifact({ sessionId, ref }),
+  }), [platformActions, openArtifact, registerArtifact, sessionId])
+  const handleSendNotesToChat = React.useCallback((text: string) => {
+    const current = inputValueRef.current
+    handleInputChange(current.trim() ? `${current.replace(/\s+$/, '')}\n\n${text}` : text)
+  }, [handleInputChange])
 
   // Attachments draft state — hydrated async from persisted refs on session switch.
   // `[]` is the safe default while hydration is in flight; FreeFormInput seeds its
@@ -805,11 +824,7 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
     )
   }
 
-  return (
-    <>
-      <div className="h-full flex flex-col">
-        <PanelHeader  title={displayTitle} titleMenu={titleMenu} compactTitleMenu={compactTitleMenu} leadingAction={leadingAction} actions={headerActions} rightSidebarButton={rightSidebarButton} isRegeneratingTitle={isAsyncOperationOngoing} />
-        <div className="flex-1 flex flex-col min-h-0">
+  const chatDisplay = (
           <ChatDisplay
             ref={chatDisplayRef}
             session={session}
@@ -858,7 +873,27 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
             compactMode={!!isCompactMode}
             enableCompactModelPicker={!!isCompactMode}
           />
-        </div>
+  )
+
+  return (
+    <PlatformProvider actions={sessionPlatformActions}>
+      <div className="h-full flex flex-col">
+        <PanelHeader  title={displayTitle} titleMenu={titleMenu} compactTitleMenu={compactTitleMenu} leadingAction={leadingAction} actions={headerActions} rightSidebarButton={rightSidebarButton} isRegeneratingTitle={isAsyncOperationOngoing} />
+        {artifactPaneOpen ? (
+          <ResizablePanelGroup direction="horizontal" autoSaveId={`artifact-pane:${sessionId}`} className="flex-1 min-h-0">
+            <ResizablePanel defaultSize={50} minSize={30} className="flex flex-col min-h-0">
+              {chatDisplay}
+            </ResizablePanel>
+            <ResizableHandle className="w-1 bg-transparent hover:bg-foreground/10 transition-colors after:w-2" />
+            <ResizablePanel defaultSize={50} minSize={25} className="flex flex-col min-h-0">
+              <ArtifactPane sessionId={sessionId} onSendToChat={handleSendNotesToChat} onUrlClick={handleOpenUrl} onFileClick={handleOpenFile} />
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        ) : (
+          <div className="flex-1 flex flex-col min-h-0">
+            {chatDisplay}
+          </div>
+        )}
       </div>
       <RenameDialog
         open={renameDialogOpen}
@@ -869,7 +904,7 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
         onSubmit={handleRenameSubmit}
         placeholder={t('chat.enterSessionName')}
       />
-    </>
+    </PlatformProvider>
   )
 })
 

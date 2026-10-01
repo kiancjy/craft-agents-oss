@@ -35,6 +35,8 @@ import { ItemNavigator } from '../overlay/ItemNavigator'
 import { usePlatform } from '../../context/PlatformContext'
 import { useTranslation } from 'react-i18next'
 import { Markdown } from './Markdown'
+import { ArtifactOpenButton, useArtifactRef } from './ArtifactOpenButton'
+import type { BlockPresentation } from './artifact-ref'
 import {
   parseMarkdownPreviewSpec,
   normalizePreviewItems,
@@ -63,11 +65,14 @@ export interface MarkdownDocBlockProps {
   className?: string
   onUrlClick?: (url: string) => void
   onFileClick?: (path: string) => void
+  presentation?: BlockPresentation
 }
 
-export function MarkdownDocBlock({ code, className, onUrlClick, onFileClick }: MarkdownDocBlockProps) {
+export function MarkdownDocBlock({ code, className, onUrlClick, onFileClick, presentation = 'inline' }: MarkdownDocBlockProps) {
   const { t } = useTranslation()
   const { onReadFile } = usePlatform()
+  const artifact = useArtifactRef('markdown-preview', code, presentation)
+  const inPane = presentation === 'pane'
 
   const spec = React.useMemo(() => parseMarkdownPreviewSpec(code), [code])
   const items = React.useMemo<MarkdownPreviewItem[]>(() => normalizePreviewItems(spec), [spec])
@@ -127,13 +132,14 @@ export function MarkdownDocBlock({ code, className, onUrlClick, onFileClick }: M
 
   return (
     <MarkdownDocBlockErrorBoundary fallback={fallback}>
-      <div className={cn('relative group rounded-[8px] overflow-hidden border bg-muted/10', className)}>
-        <div className="px-3 py-2 bg-muted/50 border-b flex items-center gap-2">
+      <div className={cn('relative group rounded-[8px] overflow-hidden border bg-muted/10', inPane && 'h-full flex flex-col rounded-none border-0', className)}>
+        {!inPane && <div className="px-3 py-2 bg-muted/50 border-b flex items-center gap-2">
           <FileText className="w-3.5 h-3.5 text-muted-foreground/50" />
           <span className="text-[12px] text-muted-foreground font-medium flex-1">{headerTitle}</span>
           <div className="flex items-center gap-1">
             <ItemNavigator items={items} activeIndex={activeIndex} onSelect={setActiveIndex} />
-            <button
+            <ArtifactOpenButton artifact={artifact} alwaysVisible={hasMultiple} />
+            {!inPane && <button
               onClick={() => setIsFullscreen((v) => !v)}
               className={cn(
                 "p-1 rounded-[6px] transition-all select-none",
@@ -145,14 +151,15 @@ export function MarkdownDocBlock({ code, className, onUrlClick, onFileClick }: M
               title={isFullscreen ? t('common.close') : t('preview.expandPreview')}
             >
               <Maximize2 className="w-3.5 h-3.5" />
-            </button>
+            </button>}
           </div>
-        </div>
+        </div>}
 
         <div
           className={cn(
-            'relative px-3 py-2 overflow-auto',
-            isFullscreen ? 'max-h-[80vh]' : 'max-h-[400px]'
+            'relative overflow-auto',
+            inPane ? 'flex-1 min-h-0 px-6 py-4' : 'px-3 py-2',
+            !inPane && (isFullscreen ? 'max-h-[80vh]' : 'max-h-[400px]')
           )}
         >
           {activeContent !== undefined && (
@@ -174,7 +181,7 @@ export function MarkdownDocBlock({ code, className, onUrlClick, onFileClick }: M
             <div className="py-6 text-center text-destructive/70 text-[13px]">{error}</div>
           )}
 
-          {!isFullscreen && activeContent !== undefined && (
+          {!isFullscreen && !inPane && activeContent !== undefined && (
             <div
               className="absolute bottom-0 left-0 right-0 h-8 pointer-events-none"
               style={{
