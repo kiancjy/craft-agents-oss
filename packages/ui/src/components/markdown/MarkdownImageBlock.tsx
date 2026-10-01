@@ -29,6 +29,8 @@ import { ImagePreviewOverlay } from '../overlay/ImagePreviewOverlay'
 import { usePlatform } from '../../context/PlatformContext'
 import { ImageCardStack } from './ImageCardStack'
 import { useTranslation } from 'react-i18next'
+import { ArtifactOpenButton, useArtifactRef } from './ArtifactOpenButton'
+import type { BlockPresentation } from './artifact-ref'
 
 interface PreviewItem {
   src: string
@@ -61,6 +63,7 @@ export interface MarkdownImageBlockProps {
   code: string
   className?: string
   onCreateRegionAnnotation?: (region: { x: number; y: number; w: number; h: number; unit: 'pixel' | 'percent' }) => void
+  presentation?: BlockPresentation
 }
 
 function detectImageRatio(src: string): Promise<number | null> {
@@ -78,9 +81,11 @@ function detectImageRatio(src: string): Promise<number | null> {
   })
 }
 
-export function MarkdownImageBlock({ code, className, onCreateRegionAnnotation: _onCreateRegionAnnotation }: MarkdownImageBlockProps) {
+export function MarkdownImageBlock({ code, className, onCreateRegionAnnotation: _onCreateRegionAnnotation, presentation = 'inline' }: MarkdownImageBlockProps) {
   const { t } = useTranslation()
   const { onReadFileDataUrl } = usePlatform()
+  const artifact = useArtifactRef('image-preview', code, presentation)
+  const inPane = presentation === 'pane'
 
   const spec = React.useMemo<ImagePreviewSpec | null>(() => {
     try {
@@ -223,12 +228,15 @@ export function MarkdownImageBlock({ code, className, onCreateRegionAnnotation: 
 
   return (
     <ImageBlockErrorBoundary fallback={fallback}>
-      <div className={cn('relative group rounded-[8px] overflow-visible', className)}>
-        <div className="relative h-[320px] overflow-visible flex items-center justify-center p-3">
-          <button
+      <div className={cn('relative group rounded-[8px] overflow-visible', inPane && 'h-full', className)}>
+        <div className={cn('relative overflow-visible flex items-center justify-center p-3', inPane ? 'h-full' : 'h-[320px]')}>
+          <div className="absolute right-2 top-2 z-10 flex items-center gap-1">
+            <ArtifactOpenButton artifact={artifact} alwaysVisible={hasMultiple} />
+          </div>
+          {!inPane && <button
             onClick={() => setIsFullscreen(true)}
             className={cn(
-              'absolute right-2 top-2 z-10 p-1 rounded-[6px] transition-all select-none',
+              'absolute right-9 top-2 z-10 p-1 rounded-[6px] transition-all select-none',
               'bg-background/90 shadow-minimal',
               'text-muted-foreground/60 hover:text-foreground',
               'focus:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:opacity-100',
@@ -237,7 +245,7 @@ export function MarkdownImageBlock({ code, className, onCreateRegionAnnotation: 
             title={t('common.viewFullscreen')}
           >
             <Maximize2 className="w-3.5 h-3.5" />
-          </button>
+          </button>}
           {hasMultiple && stackItems.length > 0 && (
             <ImageCardStack
               items={stackItems}
@@ -254,7 +262,7 @@ export function MarkdownImageBlock({ code, className, onCreateRegionAnnotation: 
               alt={safeActiveItem?.label || safeActiveItem?.src.split('/').pop() || 'Image preview'}
               className="max-w-full max-h-full object-contain"
               draggable={false}
-              onClick={() => setIsFullscreen(true)}
+              onClick={inPane ? undefined : () => setIsFullscreen(true)}
             />
           )}
 

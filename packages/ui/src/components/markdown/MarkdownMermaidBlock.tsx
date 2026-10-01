@@ -7,6 +7,8 @@ import { MermaidPreviewOverlay } from '../overlay/MermaidPreviewOverlay'
 import { normalizeMermaidSource } from './mermaid-source'
 import { useScrollFade } from './useScrollFade'
 import { useTranslation } from 'react-i18next'
+import { ArtifactOpenButton, useArtifactRef } from './ArtifactOpenButton'
+import type { BlockPresentation } from './artifact-ref'
 
 // ============================================================================
 // MarkdownMermaidBlock — renders mermaid code fences as SVG diagrams.
@@ -56,10 +58,14 @@ interface MarkdownMermaidBlockProps {
   tapToOpen?: boolean
   /** Optional minimum block height to reserve space before responsive sizing settles. */
   minHeight?: number
+  presentation?: BlockPresentation
 }
 
-export function MarkdownMermaidBlock({ code, className, showExpandButton = true, tapToOpen = true, minHeight }: MarkdownMermaidBlockProps) {
+export function MarkdownMermaidBlock({ code, className, showExpandButton = true, tapToOpen = true, minHeight, presentation = 'inline' }: MarkdownMermaidBlockProps) {
   const { t } = useTranslation()
+  const artifact = useArtifactRef('mermaid', code, presentation)
+  const inPane = presentation === 'pane'
+  const canOpenFullscreen = !inPane && tapToOpen
   // Render synchronously — no flash between CodeBlock and SVG.
   // Colors are CSS variable references so the SVG inherits from the app's theme
   // via CSS cascade. Theme switches apply automatically without re-rendering.
@@ -188,7 +194,10 @@ export function MarkdownMermaidBlock({ code, className, showExpandButton = true,
         {/* Expand button — matches code block expand button style (TurnCard pattern).
             Hidden when showExpandButton is false (first block in message, where
             TurnCard's own fullscreen button occupies the same top-right position). */}
-        {showExpandButton && (
+        <div className={cn('absolute top-2 z-10', showExpandButton && !inPane ? 'right-9' : 'right-2')}>
+          <ArtifactOpenButton artifact={artifact} />
+        </div>
+        {showExpandButton && !inPane && (
           <button
             onClick={() => setIsFullscreen(true)}
             className={cn(
@@ -225,13 +234,13 @@ export function MarkdownMermaidBlock({ code, className, showExpandButton = true,
               display: needsScaling ? 'block' : 'flex',
               justifyContent: needsScaling ? undefined : 'center',
               margin: needsScaling && !scaledDims?.needsScroll ? '0 auto' : undefined,
-              cursor: tapToOpen ? 'pointer' : undefined,
+              cursor: canOpenFullscreen ? 'pointer' : undefined,
             }}
-            onClick={tapToOpen ? () => setIsFullscreen(true) : undefined}
-            role={tapToOpen ? 'button' : undefined}
-            aria-label={tapToOpen ? 'Open Mermaid diagram fullscreen' : undefined}
-            tabIndex={tapToOpen ? 0 : undefined}
-            onKeyDown={tapToOpen ? (e) => {
+            onClick={canOpenFullscreen ? () => setIsFullscreen(true) : undefined}
+            role={canOpenFullscreen ? 'button' : undefined}
+            aria-label={canOpenFullscreen ? 'Open Mermaid diagram fullscreen' : undefined}
+            tabIndex={canOpenFullscreen ? 0 : undefined}
+            onKeyDown={canOpenFullscreen ? (e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault()
                 setIsFullscreen(true)

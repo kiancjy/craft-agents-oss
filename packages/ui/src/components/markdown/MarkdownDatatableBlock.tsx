@@ -46,6 +46,8 @@ import {
   StyledDropdownMenuSubContent,
 } from '../ui/StyledDropdown'
 import { useTranslation } from 'react-i18next'
+import { ArtifactOpenButton, useArtifactRef } from './ArtifactOpenButton'
+import type { BlockPresentation } from './artifact-ref'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -291,9 +293,12 @@ class DatatableErrorBoundary extends React.Component<
 export interface MarkdownDatatableBlockProps {
   code: string
   className?: string
+  presentation?: BlockPresentation
 }
 
-export function MarkdownDatatableBlock({ code, className }: MarkdownDatatableBlockProps) {
+export function MarkdownDatatableBlock({ code, className, presentation = 'inline' }: MarkdownDatatableBlockProps) {
+  const artifact = useArtifactRef('datatable', code, presentation)
+  const inPane = presentation === 'pane'
   const { t } = useTranslation()
   const { onReadFile } = usePlatform()
 
@@ -664,14 +669,15 @@ export function MarkdownDatatableBlock({ code, className }: MarkdownDatatableBlo
 
   return (
     <DatatableErrorBoundary fallback={fallback}>
-      <div className={cn('relative group rounded-[8px] overflow-hidden border bg-muted/10', className)}>
+      <div className={cn('relative group rounded-[8px] overflow-hidden border bg-muted/10', inPane && 'h-full flex flex-col rounded-none border-0', className)}>
         {/* Control button */}
-        <div className="absolute top-[7px] right-10 z-10">
+        <div className={cn('absolute top-[7px] z-10 flex items-center gap-1', inPane ? 'right-2' : 'right-10')}>
+          <ArtifactOpenButton artifact={artifact} alwaysVisible={hasActiveControls} className="mr-1" />
           {renderControlsDropdown()}
         </div>
 
         {/* Expand button */}
-        <button
+        {!inPane && <button
           onClick={() => setIsFullscreen(true)}
           className={cn(
             "absolute top-[7px] right-2 p-1 rounded-[6px] transition-all z-10 select-none",
@@ -683,17 +689,17 @@ export function MarkdownDatatableBlock({ code, className }: MarkdownDatatableBlo
           title={t('common.viewFullscreen')}
         >
           <Maximize2 className="w-3.5 h-3.5" />
-        </button>
+        </button>}
 
         {/* Header */}
         <div className="px-3 py-2 bg-muted/50 border-b">
           <span className="text-[12px] text-muted-foreground font-medium">
-            {parsed.title || t('datatable.defaultTitle')}
+            {inPane ? t('datatable.rowCount', { count: parsed.rows.length }) : (parsed.title || t('datatable.defaultTitle'))}
           </span>
         </div>
 
         {/* Table with max height and scroll fade */}
-        {tableContent(true, true)}
+        {inPane ? <div className="flex-1 min-h-0 overflow-auto">{tableContent(false)}</div> : tableContent(true, true)}
       </div>
 
       {/* Fullscreen overlay */}

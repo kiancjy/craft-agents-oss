@@ -19,3 +19,8 @@ export {
 } from './markdown-preview-helpers'
 export { ImageCardStack, type ImageCardStackProps, type ImageCardStackItem } from './ImageCardStack'
 export { TiptapMarkdownEditor, type TiptapMarkdownEditorProps, type MarkdownEngine } from './TiptapMarkdownEditor'
+export { MarkdownHtmlBlock, type MarkdownHtmlBlockProps } from './MarkdownHtmlBlock'
+export { MarkdownPdfBlock, type MarkdownPdfBlockProps } from './MarkdownPdfBlock'
+export { MarkdownMermaidBlock } from './MarkdownMermaidBlock'
+export { ArtifactOpenButton, useArtifactRef } from './ArtifactOpenButton'
+export { createArtifactRef, resolveArtifactSrc, type ArtifactRef, type ArtifactType, type BlockPresentation } from './artifact-ref'
