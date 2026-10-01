@@ -31,6 +31,8 @@ import { useScrollFade } from './useScrollFade'
 import { TableExportDropdown } from './TableExportDropdown'
 import { usePlatform } from '../../context/PlatformContext'
 import { useTranslation } from 'react-i18next'
+import { ArtifactOpenButton, useArtifactRef } from './ArtifactOpenButton'
+import type { BlockPresentation } from './artifact-ref'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -115,9 +117,12 @@ class SpreadsheetErrorBoundary extends React.Component<
 export interface MarkdownSpreadsheetBlockProps {
   code: string
   className?: string
+  presentation?: BlockPresentation
 }
 
-export function MarkdownSpreadsheetBlock({ code, className }: MarkdownSpreadsheetBlockProps) {
+export function MarkdownSpreadsheetBlock({ code, className, presentation = 'inline' }: MarkdownSpreadsheetBlockProps) {
+  const artifact = useArtifactRef('spreadsheet', code, presentation)
+  const inPane = presentation === 'pane'
   const { t } = useTranslation()
   const { onReadFile } = usePlatform()
 
@@ -275,9 +280,12 @@ export function MarkdownSpreadsheetBlock({ code, className }: MarkdownSpreadshee
 
   return (
     <SpreadsheetErrorBoundary fallback={fallback}>
-      <div className={cn('relative group rounded-[8px] overflow-hidden border bg-muted/10', className)}>
+      <div className={cn('relative group rounded-[8px] overflow-hidden border bg-muted/10', inPane && 'h-full flex flex-col rounded-none border-0', className)}>
+        <div className="absolute top-[7px] right-9 z-10">
+          <ArtifactOpenButton artifact={artifact} className={inPane ? undefined : 'mr-1'} />
+        </div>
         {/* Expand button */}
-        <button
+        {!inPane && <button
           onClick={() => setIsFullscreen(true)}
           className={cn(
             "absolute top-[7px] right-2 p-1 rounded-[6px] transition-all z-10 select-none",
@@ -289,15 +297,17 @@ export function MarkdownSpreadsheetBlock({ code, className }: MarkdownSpreadshee
           title={t('common.viewFullscreen')}
         >
           <Maximize2 className="w-3.5 h-3.5" />
-        </button>
+        </button>}
 
         {/* Header */}
         <div className="px-3 py-2 bg-muted/50 border-b">
-          <span className="text-[12px] text-muted-foreground font-medium">{label}</span>
+          <span className="text-[12px] text-muted-foreground font-medium">
+            {inPane ? `${t('datatable.rowCount', { count: parsed.rows.length })} × ${t('spreadsheet.colCount', { count: parsed.columns.length })}` : label}
+          </span>
         </div>
 
         {/* Table with max height and scroll fade */}
-        {tableContent(true, true)}
+        {inPane ? <div className="flex-1 min-h-0 overflow-auto">{tableContent(false)}</div> : tableContent(true, true)}
       </div>
 
       {/* Fullscreen overlay */}

@@ -36,6 +36,8 @@ import { HTMLPreviewOverlay } from '../overlay/HTMLPreviewOverlay'
 import { ItemNavigator } from '../overlay/ItemNavigator'
 import { usePlatform } from '../../context/PlatformContext'
 import { useTranslation } from 'react-i18next'
+import { ArtifactOpenButton, useArtifactRef } from './ArtifactOpenButton'
+import type { BlockPresentation } from './artifact-ref'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -91,11 +93,14 @@ function injectBaseTarget(html: string): string {
 export interface MarkdownHtmlBlockProps {
   code: string
   className?: string
+  presentation?: BlockPresentation
 }
 
-export function MarkdownHtmlBlock({ code, className }: MarkdownHtmlBlockProps) {
+export function MarkdownHtmlBlock({ code, className, presentation = 'inline' }: MarkdownHtmlBlockProps) {
   const { t } = useTranslation()
   const { onReadFile } = usePlatform()
+  const artifact = useArtifactRef('html-preview', code, presentation)
+  const inPane = presentation === 'pane'
 
   // Parse the JSON spec — supports single src or items array
   const spec = React.useMemo<HtmlPreviewSpec | null>(() => {
@@ -181,16 +186,17 @@ export function MarkdownHtmlBlock({ code, className }: MarkdownHtmlBlockProps) {
 
   return (
     <HtmlBlockErrorBoundary fallback={fallback}>
-      <div className={cn('relative group rounded-[8px] overflow-hidden border bg-muted/10', className)}>
+      <div className={cn('relative group rounded-[8px] overflow-hidden border bg-muted/10', inPane && 'h-full flex flex-col rounded-none border-0', className)}>
         {/* Header */}
-        <div className="px-3 py-2 bg-muted/50 border-b flex items-center gap-2">
+        {!inPane && <div className="px-3 py-2 bg-muted/50 border-b flex items-center gap-2">
           <Globe className="w-3.5 h-3.5 text-muted-foreground/50" />
           <span className="text-[12px] text-muted-foreground font-medium flex-1">
             {spec.title || t('preview.htmlPreview')}
           </span>
           <div className="flex items-center gap-1">
             <ItemNavigator items={items} activeIndex={activeIndex} onSelect={setActiveIndex} />
-            <button
+            <ArtifactOpenButton artifact={artifact} alwaysVisible={hasMultiple} />
+            {!inPane && <button
               onClick={() => setIsFullscreen(true)}
               className={cn(
                 "p-1 rounded-[6px] transition-all select-none",
@@ -202,12 +208,12 @@ export function MarkdownHtmlBlock({ code, className }: MarkdownHtmlBlockProps) {
               title={t('common.viewFullscreen')}
             >
               <Maximize2 className="w-3.5 h-3.5" />
-            </button>
+            </button>}
           </div>
-        </div>
+        </div>}
 
         {/* Content area: hidden iframes for cached items + loading/error for uncached active */}
-        <div className="relative max-h-[400px] overflow-hidden">
+        <div className={cn('relative overflow-hidden', inPane ? 'flex-1 min-h-0' : 'max-h-[400px]')}>
           {/* Render all cached items as hidden iframes — prevents flash on tab switch */}
           {items.map((item, i) => {
             const processed = processedCache[item.src]
@@ -220,7 +226,7 @@ export function MarkdownHtmlBlock({ code, className }: MarkdownHtmlBlockProps) {
                 title={item.label || spec.title || t('preview.htmlPreview')}
                 className="w-full border-0 bg-white"
                 style={{
-                  height: '400px',
+                  height: inPane ? '100%' : '400px',
                   display: i === activeIndex ? 'block' : 'none',
                 }}
               />
@@ -238,7 +244,7 @@ export function MarkdownHtmlBlock({ code, className }: MarkdownHtmlBlockProps) {
           )}
 
           {/* Bottom fade gradient */}
-          {hasCachedContent && (
+          {hasCachedContent && !inPane && (
             <div
               className="absolute bottom-0 left-0 right-0 h-8 pointer-events-none"
               style={{
