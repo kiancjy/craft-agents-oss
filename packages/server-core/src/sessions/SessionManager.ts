@@ -42,6 +42,7 @@ import { loadWorkspaceConfig } from '@craft-agent/shared/workspaces'
 import {
   // Session persistence functions
   listSessions as listStoredSessions,
+  listSessionsAsync as listStoredSessionsAsync,
   loadSession as loadStoredSession,
   saveSession as saveStoredSession,
   createSession as createStoredSession,
@@ -1929,7 +1930,7 @@ export class SessionManager implements ISessionManager {
       }
 
       // Load existing sessions from disk
-      this.loadSessionsFromDisk()
+      await this.loadSessionsFromDisk()
 
       // Signal that initialization is complete — IPC handlers waiting on initGate will proceed
       this.initGate.markReady()
@@ -1940,7 +1941,9 @@ export class SessionManager implements ISessionManager {
   }
 
   // Load all existing sessions from disk into memory (metadata only - messages are lazy-loaded)
-  private loadSessionsFromDisk(): void {
+  // Uses the async, concurrency-limited reader so a slow/network-backed workspace (e.g. an
+  // iCloud Drive-synced folder with evicted "dataless" files) can't freeze startup for minutes.
+  private async loadSessionsFromDisk(): Promise<void> {
     try {
       const workspaces = getWorkspaces()
       let totalSessions = 0
@@ -1948,7 +1951,7 @@ export class SessionManager implements ISessionManager {
       // Iterate over each workspace and load its sessions
       for (const workspace of workspaces) {
         const workspaceRootPath = workspace.rootPath
-        const sessionMetadata = listStoredSessions(workspaceRootPath)
+        const sessionMetadata = await listStoredSessionsAsync(workspaceRootPath)
         // Load workspace config once per workspace for default working directory
         const wsConfig = loadWorkspaceConfig(workspaceRootPath)
         const wsDefaultWorkingDir = wsConfig?.defaults?.workingDirectory
@@ -2392,8 +2395,8 @@ export class SessionManager implements ISessionManager {
    * Reload all sessions from disk.
    * Used after importing sessions to refresh the in-memory session list.
    */
-  reloadSessions(): void {
-    this.loadSessionsFromDisk()
+  async reloadSessions(): Promise<void> {
+    await this.loadSessionsFromDisk()
   }
 
   getSessions(workspaceId?: string): Session[] {

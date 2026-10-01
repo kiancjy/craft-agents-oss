@@ -40,7 +40,7 @@ import type { Plan } from '../agent/plan-types.ts';
 import { validateSessionStatus } from '../statuses/validation.ts';
 import { debug } from '../utils/debug.ts';
 import { getStatusCategory } from '../statuses/storage.ts';
-import { readSessionHeader, readSessionJsonl } from './jsonl.ts';
+import { readSessionHeader, readSessionHeaderAsync, readSessionJsonl } from './jsonl.ts';
 import { sessionPersistenceQueue } from './persistence-queue.ts';
 
 // Re-export types for convenience
@@ -390,6 +390,64 @@ export function listSessions(workspaceRootPath: string): SessionMetadata[] {
   span.setMetadata('count', sessions.length);
 
   // Sort by lastUsedAt descending (most recent first)
+  const sorted = sessions.sort((a, b) => b.lastUsedAt - a.lastUsedAt);
+  span.end();
+  return sorted;
+}
+
+/**
+ * Async, concurrency-limited variant of listSessions.
+ *
+ * Startup loads can hit hundreds of session files on network-backed filesystems
+ * (e.g. an iCloud Drive-synced workspace with evicted/"dataless" files). A sync
+ * read there blocks the event loop until the OS re-downloads the whole file, and
+ * doing that serially for every session can freeze the app for minutes. This
+ * version uses async reads (off the main JS thread via libuv) with bounded
+ * concurrency so no single slow file blocks the rest, and the process stays
+ * responsive while sessions materialize.
+ */
+export async function listSessionsAsync(workspaceRootPath: string): Promise<SessionMetadata[]> {
+  const span = perf.span('session.listSessionsAsync');
+  const sessionsDir = getWorkspaceSessionsPath(workspaceRootPath);
+  if (!existsSync(sessionsDir)) {
+    span.end();
+    return [];
+  }
+
+  const entries = readdirSync(sessionsDir, { withFileTypes: true });
+  span.mark('readdir');
+
+  const sessionIds = entries.filter(e => e.isDirectory()).map(e => e.name);
+  const sessions: SessionMetadata[] = [];
+
+  const CONCURRENCY = 16;
+  for (let i = 0; i < sessionIds.length; i += CONCURRENCY) {
+    const batch = sessionIds.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(async sessionId => {
+        const sessionDir = join(sessionsDir, sessionId);
+        const jsonlFile = join(sessionDir, 'session.jsonl');
+
+        // Clean up orphaned .tmp files from crashed atomic writes.
+        const tmpFile = jsonlFile + '.tmp';
+        if (existsSync(tmpFile)) {
+          try { unlinkSync(tmpFile); } catch { /* ignore */ }
+        }
+
+        if (!existsSync(jsonlFile)) return null;
+
+        const header = await readSessionHeaderAsync(jsonlFile);
+        if (!header) return null;
+        return headerToMetadata(header, workspaceRootPath);
+      })
+    );
+    for (const metadata of results) {
+      if (metadata) sessions.push(metadata);
+    }
+  }
+  span.mark('parsed');
+  span.setMetadata('count', sessions.length);
+
   const sorted = sessions.sort((a, b) => b.lastUsedAt - a.lastUsedAt);
   span.end();
   return sorted;
