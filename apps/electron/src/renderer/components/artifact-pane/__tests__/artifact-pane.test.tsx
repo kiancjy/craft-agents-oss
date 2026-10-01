@@ -33,14 +33,13 @@ beforeAll(async () => {
 beforeEach(() => {
   ;(globalThis as { localStorage?: unknown }).localStorage = new MemoryStorage()
   for (const param of Array.from(atoms.artifactPaneAtomFamily.getParams())) atoms.artifactPaneAtomFamily.remove(param)
-  for (const param of Array.from(atoms.artifactNotesAtomFamily.getParams())) atoms.artifactNotesAtomFamily.remove(param)
 })
 
 function render(store: ReturnType<typeof createStore>, sessionId: string) {
   return renderToStaticMarkup(
     <Provider store={store}>
       <ui.TooltipProvider>
-        <pane.ArtifactPane sessionId={sessionId} onSendToChat={() => {}} />
+        <pane.ArtifactPane sessionId={sessionId} />
       </ui.TooltipProvider>
     </Provider>,
   )
@@ -52,37 +51,32 @@ describe('ArtifactPane', () => {
     expect(render(store, 's1')).toBe('')
   })
 
-  it('renders the active artifact title, content and stored notes', () => {
+  it('renders the active artifact title and content', () => {
     const store = createStore()
     const ref = { key: 'mermaid:abc', type: 'mermaid' as const, title: 'Flow', code: 'graph LR\nA-->B' }
     store.set(atoms.openArtifactAtom, { sessionId: 's1', ref })
-    store.set(atoms.artifactNotesAtomFamily({ sessionId: 's1', key: ref.key }), 'remember this')
     const markup = render(store, 's1')
     expect(markup).toContain('data-artifact-pane="mermaid:abc"')
     expect(markup).toContain('Flow')
-    expect(markup).toContain('remember this')
     expect(markup).toContain('data-artifact-close')
     expect(markup).not.toContain('data-artifact-open')
     expect(markup).not.toContain('lucide-maximize-2')
   })
 
-  it('does not render notes from a different session', () => {
+  it('renders no notes affordances', () => {
+    const store = createStore()
+    const ref = { key: 'mermaid:abc', type: 'mermaid' as const, title: 'Flow', code: 'graph LR\nA-->B' }
+    store.set(atoms.openArtifactAtom, { sessionId: 's1', ref })
+    const markup = render(store, 's1')
+    expect(markup).not.toContain('data-artifact-notes')
+    expect(markup).not.toContain('data-artifact-send-notes')
+    expect(markup).not.toContain('<textarea')
+  })
+
+  it('does not render an artifact opened in a different session', () => {
     const store = createStore()
     const ref = { key: 'datatable:abc', type: 'datatable' as const, title: 'Rows', code: '{"columns":[{"key":"a","label":"A"}],"rows":[{"a":1}]}' }
-    store.set(atoms.openArtifactAtom, { sessionId: 's1', ref })
-    store.set(atoms.artifactNotesAtomFamily({ sessionId: 's2', key: ref.key }), 'other session')
-    expect(render(store, 's1')).not.toContain('other session')
-  })
-})
-
-describe('notes helpers', () => {
-  it('appends a heading reference on a fresh line', () => {
-    expect(pane.appendHeadingReference('', 'Scope')).toBe('## Scope\n- ')
-    expect(pane.appendHeadingReference('first', 'Scope')).toBe('first\n\n## Scope\n- ')
-    expect(pane.appendHeadingReference('first\n', 'Scope')).toBe('first\n\n## Scope\n- ')
-  })
-
-  it('builds the chat message with a bold heading and trimmed notes', () => {
-    expect(pane.buildNotesMessage('Notes on Flow', '  a\nb  ')).toBe('**Notes on Flow**\n\na\nb')
+    store.set(atoms.openArtifactAtom, { sessionId: 's2', ref })
+    expect(render(store, 's1')).toBe('')
   })
 })

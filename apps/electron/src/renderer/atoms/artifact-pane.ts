@@ -90,25 +90,3 @@ export const bumpArtifactVersionAtom = atom(null, (get, set, { sessionId, key }:
   set(paneAtom, { ...current, artifacts: { ...current.artifacts, [key]: { ...existing, version: existing.version + 1 } } })
 })
 
-export interface ArtifactNotesId {
-  sessionId: string
-  key: string
-}
-
-function notesSuffix({ sessionId, key }: ArtifactNotesId): string {
-  return `${sessionId}|${key}`
-}
-
-export const artifactNotesAtomFamily = atomFamily(
-  (id: ArtifactNotesId) => {
-    const base = atom<string>(storage.get<string>(storage.KEYS.artifactNotes, '', notesSuffix(id)))
-    return atom(
-      (get) => get(base),
-      (_get, set, next: string) => {
-        set(base, next)
-        storage.set(storage.KEYS.artifactNotes, next, notesSuffix(id))
-      },
-    )
-  },
-  (a, b) => a.sessionId === b.sessionId && a.key === b.key,
-)

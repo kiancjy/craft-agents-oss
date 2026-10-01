@@ -277,10 +277,6 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
     onOpenArtifact: (ref: ArtifactRef) => openArtifact({ sessionId, ref }),
     onRegisterArtifact: (ref: ArtifactRef) => registerArtifact({ sessionId, ref }),
   }), [platformActions, openArtifact, registerArtifact, sessionId])
-  const handleSendNotesToChat = React.useCallback((text: string) => {
-    const current = inputValueRef.current
-    handleInputChange(current.trim() ? `${current.replace(/\s+$/, '')}\n\n${text}` : text)
-  }, [handleInputChange])
 
   // Attachments draft state — hydrated async from persisted refs on session switch.
   // `[]` is the safe default while hydration is in flight; FreeFormInput seeds its
@@ -892,7 +888,7 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
             </ResizablePanel>
             <ResizableHandle className="w-1 bg-transparent hover:bg-foreground/10 transition-colors after:w-2" />
             <ResizablePanel defaultSize={50} minSize={25} className="flex flex-col min-h-0">
-              <ArtifactPane sessionId={sessionId} onSendToChat={handleSendNotesToChat} onUrlClick={handleOpenUrl} onFileClick={handleOpenFile} />
+              <ArtifactPane sessionId={sessionId} onUrlClick={handleOpenUrl} onFileClick={handleOpenFile} />
             </ResizablePanel>
           </ResizablePanelGroup>
         ) : (

@@ -3,7 +3,6 @@ import { createStore } from 'jotai'
 import type { ArtifactRef } from '@craft-agent/ui'
 import {
   ARTIFACT_PANE_MAX_ARTIFACTS,
-  artifactNotesAtomFamily,
   artifactPaneAtomFamily,
   bumpArtifactVersionAtom,
   closeArtifactPaneAtom,
@@ -28,7 +27,6 @@ function ref(key: string, code = `code-${key}`): ArtifactRef {
 
 function resetFamilies() {
   for (const param of Array.from(artifactPaneAtomFamily.getParams())) artifactPaneAtomFamily.remove(param)
-  for (const param of Array.from(artifactNotesAtomFamily.getParams())) artifactNotesAtomFamily.remove(param)
 }
 
 beforeEach(() => {
@@ -138,17 +136,5 @@ describe('artifact pane atoms', () => {
     expect(restored.activeKey).toBe('a')
     expect(restored.artifacts.a?.title).toBe('Title a')
     expect(fresh.get(artifactPaneAtomFamily('s2')).order).toEqual([])
-  })
-})
-
-describe('artifact notes atoms', () => {
-  it('stores notes per session and artifact and restores them', () => {
-    const store = createStore()
-    store.set(artifactNotesAtomFamily({ sessionId: 's1', key: 'a' }), 'first thought')
-    store.set(artifactNotesAtomFamily({ sessionId: 's1', key: 'b' }), 'other')
-    expect(store.get(artifactNotesAtomFamily({ sessionId: 's1', key: 'a' }))).toBe('first thought')
-    expect(store.get(artifactNotesAtomFamily({ sessionId: 's2', key: 'a' }))).toBe('')
-    resetFamilies()
-    expect(createStore().get(artifactNotesAtomFamily({ sessionId: 's1', key: 'a' }))).toBe('first thought')
   })
 })
