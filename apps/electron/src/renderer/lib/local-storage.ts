@@ -57,9 +57,8 @@ export const KEYS = {
   // What's New
   whatsNewLastSeenVersion: 'whats-new-last-seen-version',
 
-  // Artifact pane (session-scoped via suffix = sessionId; notes via sessionId|artifactKey)
+  // Artifact pane (session-scoped via suffix = sessionId)
   artifactPane: 'artifact-pane',
-  artifactNotes: 'artifact-notes',
 
   // Workspace navigation state (workspace-scoped via suffix = workspaceSlug)
   // Stores the full URL search string so switching back restores panels/focus/sidebar

@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, FileText, Globe, Image as ImageIcon, Send, Table2, Trash2, Workflow, X } from 'lucide-react'
+import { ChevronDown, FileText, Globe, Image as ImageIcon, Table2, Workflow, X } from 'lucide-react'
 import {
   MarkdownDatatableBlock,
   MarkdownDocBlock,
@@ -19,7 +19,6 @@ import { StyledDropdownMenuContent, StyledDropdownMenuItem } from '@/components/
 import { HeaderIconButton } from '@/components/ui/HeaderIconButton'
 import { cn } from '@/lib/utils'
 import {
-  artifactNotesAtomFamily,
   artifactPaneAtomFamily,
   bumpArtifactVersionAtom,
   closeArtifactPaneAtom,
@@ -91,107 +90,19 @@ export function useArtifactFileRefresh(sessionId: string, artifact: StoredArtifa
   return flash
 }
 
-export function buildNotesMessage(heading: string, notes: string): string {
-  return `**${heading}**\n\n${notes.trim()}`
-}
-
-export function appendHeadingReference(notes: string, heading: string): string {
-  const separator = notes.length === 0 ? '' : notes.endsWith('\n') ? '\n' : '\n\n'
-  return `${notes}${separator}## ${heading}\n- `
-}
-
-function countWords(text: string): number {
-  const trimmed = text.trim()
-  return trimmed ? trimmed.split(/\s+/).length : 0
-}
-
-interface ArtifactNotesProps {
-  sessionId: string
-  artifact: StoredArtifact
-  onSendToChat: (text: string) => void
-  notesRef: React.RefObject<HTMLTextAreaElement>
-}
-
-function ArtifactNotes({ sessionId, artifact, onSendToChat, notesRef }: ArtifactNotesProps) {
-  const { t } = useTranslation()
-  const notesAtom = artifactNotesAtomFamily({ sessionId, key: artifact.key })
-  const notes = useAtomValue(notesAtom)
-  const setNotes = useSetAtom(notesAtom)
-  const wordCount = countWords(notes)
-
-  return (
-    <div className="flex flex-col border-t bg-background" style={{ height: '32%' }}>
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b text-[12px] text-muted-foreground">
-        <span className="font-medium flex-1">
-          {t('artifact.notes')}{wordCount > 0 ? ` · ${t('artifact.wordCount', { count: wordCount })}` : ''}
-        </span>
-        <button
-          type="button"
-          disabled={wordCount === 0}
-          onClick={() => {
-            if (window.confirm(t('artifact.clearNotesConfirm'))) setNotes('')
-          }}
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[6px] hover:text-foreground hover:bg-foreground/5 disabled:opacity-40 disabled:hover:bg-transparent"
-          title={t('artifact.clearNotes')}
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
-        <button
-          type="button"
-          disabled={wordCount === 0}
-          onClick={() => onSendToChat(buildNotesMessage(t('artifact.notesForTitle', { title: artifact.title }), notes))}
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[6px] bg-foreground/5 hover:bg-foreground/10 text-foreground disabled:opacity-40"
-          data-artifact-send-notes
-        >
-          <Send className="w-3.5 h-3.5" />
-          {t('artifact.sendToChat')}
-        </button>
-      </div>
-      <textarea
-        ref={notesRef}
-        value={notes}
-        onChange={(event) => setNotes(event.target.value)}
-        placeholder={t('artifact.notesPlaceholder')}
-        className="flex-1 min-h-0 w-full resize-none border-0 bg-transparent px-4 py-3 text-[13px] leading-relaxed text-foreground placeholder:text-muted-foreground outline-none"
-        data-artifact-notes
-      />
-    </div>
-  )
-}
-
 export interface ArtifactPaneProps {
   sessionId: string
-  onSendToChat: (text: string) => void
   onUrlClick?: (url: string) => void
   onFileClick?: (path: string) => void
 }
 
-export function ArtifactPane({ sessionId, onSendToChat, onUrlClick, onFileClick }: ArtifactPaneProps) {
+export function ArtifactPane({ sessionId, onUrlClick, onFileClick }: ArtifactPaneProps) {
   const { t } = useTranslation()
   const state = useAtomValue(artifactPaneAtomFamily(sessionId))
   const close = useSetAtom(closeArtifactPaneAtom)
   const setActive = useSetAtom(setActiveArtifactAtom)
   const active = state.activeKey ? state.artifacts[state.activeKey] ?? null : null
   const flash = useArtifactFileRefresh(sessionId, active)
-  const notesRef = React.useRef<HTMLTextAreaElement>(null)
-  const notesAtom = artifactNotesAtomFamily({ sessionId, key: active?.key ?? '' })
-  const notes = useAtomValue(notesAtom)
-  const setNotes = useSetAtom(notesAtom)
-
-  const handleContentClick = React.useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    if (!active || active.type !== 'markdown-preview') return
-    const heading = (event.target as HTMLElement).closest('h1, h2, h3, h4')
-    if (!heading) return
-    const text = heading.textContent?.trim()
-    if (!text) return
-    setNotes(appendHeadingReference(notes, text))
-    requestAnimationFrame(() => {
-      const el = notesRef.current
-      if (!el) return
-      el.focus()
-      el.selectionStart = el.selectionEnd = el.value.length
-    })
-  }, [active, notes, setNotes])
 
   if (!active) return null
   const Icon = TYPE_ICONS[active.type]
@@ -242,10 +153,9 @@ export function ArtifactPane({ sessionId, onSendToChat, onUrlClick, onFileClick 
           data-artifact-close
         />
       </div>
-      <div className="flex-1 min-h-0 overflow-hidden" onClick={handleContentClick}>
+      <div className="flex-1 min-h-0 overflow-hidden">
         <ArtifactContent key={`${active.key}:${active.version}`} artifact={active} onUrlClick={onUrlClick} onFileClick={onFileClick} />
       </div>
-      <ArtifactNotes sessionId={sessionId} artifact={active} onSendToChat={onSendToChat} notesRef={notesRef} />
     </div>
   )
 }
