@@ -1158,10 +1158,7 @@ export class ClaudeAgent extends BaseAgent {
       // since it works for both auth paths. See: anthropics/claude-agent-sdk-typescript#238
       // Gated by enable1MContext in global config (~/.craft-agent/config.json).
       // The interceptor also reads this to strip the SDK-injected beta header.
-      const use1M = this.config.enable1MContext !== false;
-      const effectiveModel = use1M && getModelContextWindow(model) === 1_000_000
-        ? `${model}[1m]`
-        : model;
+      const effectiveModel = this.toSdkModel(model);
 
       // Capture the resolved spawn cwd here (rather than via an instance
       // field) so the catch handler reads the value passed to *this*
@@ -2813,6 +2810,21 @@ This is a branched conversation. All prior messages in this conversation are par
 
   setModel(model: string): void {
     super.setModel(model);
+    // The persistent query receives its model once, at creation. Forward the
+    // change to the live subprocess, or later turns keep the old model.
+    if (this.persistentInput && this.currentQuery) {
+      const sdkModel = this.toSdkModel(model);
+      this.currentQuery.setModel(sdkModel).then(
+        () => this.debug(`[setModel] Persistent query switched to ${sdkModel}`),
+        (err) => this.debug(`[setModel] Persistent query switch failed: ${err}`),
+      );
+    }
+  }
+
+  /** Model ID as sent to the SDK: adds the [1m] suffix for 1M-context models when enabled. */
+  private toSdkModel(model: string): string {
+    const use1M = this.config.enable1MContext !== false;
+    return use1M && getModelContextWindow(model) === 1_000_000 ? `${model}[1m]` : model;
   }
 
   // ============================================================
