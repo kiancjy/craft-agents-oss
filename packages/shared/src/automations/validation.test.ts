@@ -3,10 +3,40 @@
  */
 
 import { describe, it, expect } from 'bun:test';
-import { validateAutomationsConfig, validateAutomationsContent } from './validation.ts';
+import { validateAutomationsConfig, validateAutomationsContent, salvageAutomationsConfig } from './validation.ts';
 import { AutomationsConfigSchema, PromptActionSchema } from './schemas.ts';
 
 describe('validation', () => {
+  describe('salvageAutomationsConfig', () => {
+    it('keeps valid matchers and reports invalid ones with their real index', () => {
+      const result = salvageAutomationsConfig({
+        automations: {
+          SchedulerTick: [
+            { id: 'ok-1', cron: '0 9 * * 1', actions: [{ type: 'prompt', prompt: 'a' }] },
+            { id: 'bad', name: 'Bad cron', cron: 'not a cron', actions: [{ type: 'prompt', prompt: 'b' }] },
+            { id: 'ok-2', cron: '0 10 * * 5', actions: [{ type: 'prompt', prompt: 'c' }] },
+          ],
+          LabelAdd: [{ matcher: 'x', actions: [{ type: 'command', command: 'date' }] }],
+        },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.config.automations.SchedulerTick?.map((m) => m.id)).toEqual(['ok-1', 'ok-2']);
+      expect(result!.config.automations.LabelAdd).toBeUndefined();
+      expect(result!.skipped.map((s) => [s.event, s.index, s.id])).toEqual([
+        ['SchedulerTick', 1, 'bad'],
+        ['LabelAdd', 0, undefined],
+      ]);
+      expect(result!.skipped[0]!.errors[0]).toContain('automations.SchedulerTick[1].cron');
+      expect(result!.skipped[1]!.errors[0]).toContain('automations.LabelAdd.0.actions.0.type');
+    });
+
+    it('returns null for input that is not a config object', () => {
+      expect(salvageAutomationsConfig('nope')).toBeNull();
+      expect(salvageAutomationsConfig({ automations: [] })).toBeNull();
+    });
+  });
+
   describe('validateAutomationsConfig', () => {
     it('should accept a valid config', () => {
       const config = {

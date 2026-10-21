@@ -125,6 +125,67 @@ describe('AutomationSystem', () => {
     });
   });
 
+  describe('invalid entries alongside valid ones', () => {
+    // Regression: a single `command` action (removed in v0.13.0) made the whole
+    // file invalid and left the workspace with zero automations.
+    const mixedConfig = {
+      version: 2,
+      automations: {
+        SchedulerTick: [
+          { id: 'canary', cron: '* * * * *', actions: [{ type: 'command', command: 'date' }] },
+          { id: 'weekly', cron: '0 9 * * 1', timezone: 'Europe/London', actions: [{ type: 'prompt', prompt: 'audit' }] },
+          { id: 'friday', cron: '0 10 * * 5', actions: [{ type: 'prompt', prompt: 'review' }] },
+        ],
+      },
+    };
+
+    it('loads the valid entries at startup and skips the invalid one', async () => {
+      writeFileSync(join(tempDir, AUTOMATIONS_CONFIG_FILE), JSON.stringify(mixedConfig));
+      const warn = spyOn(console, 'warn').mockImplementation(() => {});
+
+      const system = new AutomationSystem({ workspaceRootPath: tempDir, workspaceId: 'test-workspace' });
+
+      expect(system.getConfig()?.automations.SchedulerTick?.map((m) => m.id)).toEqual(['weekly', 'friday']);
+      const lines = warn.mock.calls.map((c) => String(c[0]));
+      expect(lines.some((l) => l.includes('automations.SchedulerTick[0] (id=canary)'))).toBe(true);
+
+      warn.mockRestore();
+      await system.dispose();
+    });
+
+    it('reloads the valid entries and reports the skipped one', async () => {
+      const system = new AutomationSystem({ workspaceRootPath: tempDir, workspaceId: 'test-workspace' });
+      writeFileSync(join(tempDir, AUTOMATIONS_CONFIG_FILE), JSON.stringify(mixedConfig));
+      const warn = spyOn(console, 'warn').mockImplementation(() => {});
+
+      const result = system.reloadConfig();
+
+      expect(result.success).toBe(true);
+      expect(result.automationCount).toBe(2);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain('automations.SchedulerTick[0] (id=canary)');
+      expect(result.errors[0]).toContain('SchedulerTick.0.actions.0.type');
+
+      warn.mockRestore();
+      await system.dispose();
+    });
+
+    it('keeps the previous config when the file is not valid JSON', async () => {
+      writeFileSync(join(tempDir, AUTOMATIONS_CONFIG_FILE), JSON.stringify(mixedConfig));
+      const warn = spyOn(console, 'warn').mockImplementation(() => {});
+      const system = new AutomationSystem({ workspaceRootPath: tempDir, workspaceId: 'test-workspace' });
+
+      writeFileSync(join(tempDir, AUTOMATIONS_CONFIG_FILE), '{ not json');
+      const result = system.reloadConfig();
+
+      expect(result.success).toBe(false);
+      expect(system.getConfig()?.automations.SchedulerTick).toHaveLength(2);
+
+      warn.mockRestore();
+      await system.dispose();
+    });
+  });
+
   describe('reloadConfig', () => {
     it('should reload automations.json', async () => {
       const system = new AutomationSystem({

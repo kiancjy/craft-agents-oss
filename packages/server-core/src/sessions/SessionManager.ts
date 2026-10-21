@@ -1548,8 +1548,10 @@ export class SessionManager implements ISessionManager {
         const automationSystem = this.automationSystems.get(workspaceRootPath)
         if (automationSystem) {
           const result = automationSystem.reloadConfig()
-          if (result.errors.length === 0) {
+          if (result.success && result.errors.length === 0) {
             sessionLog.info(`Reloaded ${result.automationCount} automations for workspace ${workspaceId}`)
+          } else if (result.success) {
+            sessionLog.error(`Reloaded ${result.automationCount} automations for workspace ${workspaceId}, skipped ${result.errors.length} invalid:`, result.errors)
           } else {
             sessionLog.error(`Failed to reload automations for workspace ${workspaceId}:`, result.errors)
           }

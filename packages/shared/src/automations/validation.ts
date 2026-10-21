@@ -46,6 +46,75 @@ export function validateAutomationsConfig(content: unknown): AutomationsValidati
   return { valid: true, errors: [], config: schemaConfig };
 }
 
+/** A matcher dropped by salvageAutomationsConfig, with the reason. */
+export interface SkippedAutomation {
+  event: string;
+  index: number;
+  id?: string;
+  name?: string;
+  errors: string[];
+}
+
+/**
+ * Recover the valid matchers from a config that failed validateAutomationsConfig.
+ *
+ * Each matcher is validated on its own; invalid ones are dropped and reported
+ * in `skipped`. Without this, one bad entry (e.g. an unsupported action type)
+ * leaves the workspace with zero automations.
+ *
+ * Returns null if the config cannot be salvaged (not an object, or the kept
+ * matchers still fail together) — callers fall back to their previous behaviour.
+ */
+export function salvageAutomationsConfig(
+  content: unknown,
+): { config: AutomationsConfig; skipped: SkippedAutomation[] } | null {
+  if (!content || typeof content !== 'object' || Array.isArray(content)) return null;
+  const obj = content as Record<string, unknown>;
+  const eventMap = obj.automations;
+  if (!eventMap || typeof eventMap !== 'object' || Array.isArray(eventMap)) return null;
+  const version = typeof obj.version === 'number' ? { version: obj.version } : {};
+
+  const kept: Record<string, unknown[]> = {};
+  const skipped: SkippedAutomation[] = [];
+
+  for (const [event, matchers] of Object.entries(eventMap as Record<string, unknown>)) {
+    if (!Array.isArray(matchers)) {
+      skipped.push({ event, index: -1, errors: [`automations.${event}: expected an array of automations`] });
+      continue;
+    }
+    matchers.forEach((matcher, index) => {
+      const single = validateAutomationsConfig({ ...version, automations: { [event]: [matcher] } });
+      if (single.valid) {
+        (kept[event] ??= []).push(matcher);
+        return;
+      }
+      const m = (matcher && typeof matcher === 'object' ? matcher : {}) as Record<string, unknown>;
+      skipped.push({
+        event,
+        index,
+        id: typeof m.id === 'string' ? m.id : undefined,
+        name: typeof m.name === 'string' ? m.name : undefined,
+        // Errors refer to index 0 of the single-matcher config; point them at the real index
+        errors: single.errors.map((e) => e
+          .replace(`automations.${event}.0`, `automations.${event}.${index}`)
+          .replace(`automations.${event}[0]`, `automations.${event}[${index}]`)),
+      });
+    });
+  }
+
+  const combined = validateAutomationsConfig({ ...version, automations: kept });
+  if (!combined.valid || !combined.config) return null;
+  return { config: combined.config, skipped };
+}
+
+/** One log line per skipped matcher: event, index, id, name and reasons. */
+export function formatSkippedAutomations(skipped: SkippedAutomation[]): string[] {
+  return skipped.map((s) => {
+    const label = [s.id && `id=${s.id}`, s.name && `name="${s.name}"`].filter(Boolean).join(' ');
+    return `automations.${s.event}[${s.index}]${label ? ` (${label})` : ''}: ${s.errors.join('; ')}`;
+  });
+}
+
 /**
  * Run semantic validation checks for matcher definitions.
  * Shared by both object-based runtime validation and JSON-content validation.

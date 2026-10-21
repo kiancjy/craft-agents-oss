@@ -24,7 +24,7 @@ import { WorkspaceEventBus, type EventPayloadMap } from './event-bus.ts';
 import { PromptHandler, EventLogHandler, WebhookHandler, ScriptHandler, type AutomationsConfigProvider } from './handlers/index.ts';
 import { type AutomationsConfig, type AutomationEvent, type AutomationMatcher, type PendingPrompt, type WebhookActionResult, type ScriptActionResult, type AppEvent, type AgentEvent, type SdkAutomationCallbackMatcher, type SdkAutomationInput } from './types.ts';
 import { buildPageRefreshMatchers } from '../pages/refresh.ts';
-import { validateAutomationsConfig } from './validation.ts';
+import { validateAutomationsConfig, salvageAutomationsConfig, formatSkippedAutomations } from './validation.ts';
 import { matcherMatchesSdk } from './utils.ts';
 import { SchedulerService, type SchedulerTickPayload } from '../scheduler/scheduler-service.ts';
 
@@ -118,6 +118,30 @@ export class AutomationSystem implements AutomationsConfigProvider {
   }
 
   /**
+   * Turn a validation result into the config to run.
+   * A fully valid config is used as is. Otherwise the valid matchers are kept
+   * and each skipped one is logged, so one bad entry cannot disable the rest.
+   * Returns null if no valid matcher remains. `errors` lists the skipped matchers.
+   */
+  private resolveConfig(
+    raw: unknown,
+    validation: import('./types.ts').AutomationsValidationResult,
+  ): { config: AutomationsConfig; errors: string[] } | null {
+    if (validation.valid && validation.config) return { config: validation.config, errors: [] };
+
+    const salvaged = salvageAutomationsConfig(raw);
+    // Nothing valid to keep: treat as invalid (reload keeps the previous config)
+    const keptCount = Object.values(salvaged?.config.automations ?? {}).reduce((n, m) => n + (m?.length ?? 0), 0);
+    if (!salvaged || keptCount === 0) return null;
+
+    const errors = formatSkippedAutomations(salvaged.skipped);
+    for (const line of errors) {
+      console.warn(`[AutomationSystem] Skipped invalid automation ${line}`);
+    }
+    return { config: salvaged.config, errors };
+  }
+
+  /**
    * Load automations configuration from automations.json.
    */
   private loadConfig(): void {
@@ -131,14 +155,15 @@ export class AutomationSystem implements AutomationsConfigProvider {
 
     try {
       const { raw, validation } = this.readAndValidateConfig(configPath);
+      const resolved = this.resolveConfig(raw, validation);
 
-      if (!validation.valid) {
+      if (!resolved) {
         console.warn('[AutomationSystem] Invalid automations config:', validation.errors);
         this.config = { automations: {} };
         return;
       }
 
-      this.config = validation.config;
+      this.config = resolved.config;
       this.backfillIds(configPath, raw);
       this.rotateHistory();
       const actionCount = this.getActionCount();
@@ -164,16 +189,18 @@ export class AutomationSystem implements AutomationsConfigProvider {
 
     try {
       const { raw, validation } = this.readAndValidateConfig(configPath);
+      const resolved = this.resolveConfig(raw, validation);
 
-      if (!validation.valid) {
+      if (!resolved) {
+        // Keep the previously loaded config
         return { success: false, automationCount: 0, errors: validation.errors };
       }
 
-      this.config = validation.config;
+      this.config = resolved.config;
       this.backfillIds(configPath, raw);
       const actionCount = this.getActionCount();
       log.debug(`[AutomationSystem] Reloaded ${actionCount} actions`);
-      return { success: true, automationCount: actionCount, errors: [] };
+      return { success: true, automationCount: actionCount, errors: resolved.errors };
     } catch (e) {
       const error = e instanceof Error ? e.message : 'Unknown error';
       return { success: false, automationCount: 0, errors: [`Failed to parse JSON: ${error}`] };
