@@ -2,7 +2,7 @@ appId: com.lukilabs.craft-agent
 productName: Craft Agents
 copyright: Copyright © 2026 Craft Docs Ltd.
 
-electronVersion: "39.2.7"
+electronVersion: "45.2.1"
 
 # Hook to compile macOS 26+ Liquid Glass icon after packaging
 afterPack: scripts/afterPack.cjs
