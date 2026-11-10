@@ -1,8 +1,16 @@
 /**
  * Secure Storage Backend
  *
- * Stores credentials in an encrypted file at ~/.craft-agent/credentials.enc
+ * Stores credentials in an encrypted file at ~/.craft-agent/credentials.<machine>.enc
  * Uses AES-256-GCM for authenticated encryption.
+ *
+ * The file is per-machine: <machine> is a short hash of the hardware UUID. Users
+ * often sync ~/.craft-agent across Macs (e.g. via iCloud Drive), and since the
+ * key is machine-bound, a single shared file could only ever be read by one of
+ * them — the other would treat it as corrupt and delete it, wiping both. Each
+ * machine now reads and writes only its own file. The legacy shared
+ * `credentials.enc` is imported once if this machine can decrypt it, and is
+ * never modified or deleted.
  *
  * Encryption key is derived from OS-native hardware UUID using PBKDF2:
  * - macOS: IOPlatformUUID (tied to logic board, never changes)
@@ -32,7 +40,7 @@ import {
   createHash,
 } from 'crypto';
 import { execSync } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'fs';
 import { hostname, userInfo, homedir } from 'os';
 import { join, dirname } from 'path';
 
@@ -41,8 +49,9 @@ import type { CredentialId, StoredCredential } from '../types.ts';
 import { credentialIdToAccount, accountToCredentialId } from '../types.ts';
 
 // File location
-const CREDENTIALS_DIR = join(homedir(), '.craft-agent');
-const CREDENTIALS_FILE = join(CREDENTIALS_DIR, 'credentials.enc');
+const DEFAULT_CREDENTIALS_DIR = join(homedir(), '.craft-agent');
+/** Pre-per-machine filename, shared by every machine syncing the config dir. */
+const LEGACY_CREDENTIALS_FILENAME = 'credentials.enc';
 
 // File format constants
 const MAGIC_BYTES = Buffer.from('CRAFT01\0');
@@ -62,7 +71,14 @@ const PBKDF2_ITERATIONS = 100000;
  * This is far more stable than hostname which can change with network/DHCP.
  * Falls back to username + homedir if hardware UUID unavailable.
  */
+let cachedMachineId: string | null = null;
+
 function getStableMachineId(): string {
+  if (cachedMachineId === null) cachedMachineId = readStableMachineId();
+  return cachedMachineId;
+}
+
+function readStableMachineId(): string {
   try {
     if (process.platform === 'darwin') {
       // macOS: IOPlatformUUID - tied to logic board, never changes
@@ -98,6 +114,36 @@ function getStableMachineId(): string {
   return `${userInfo().username}:${homedir()}`;
 }
 
+/**
+ * Per-machine credentials filename. Hashed so the raw hardware UUID never
+ * appears in a (possibly cloud-synced) directory listing.
+ */
+export function getMachineCredentialsFilename(machineId: string = getStableMachineId()): string {
+  const hash = createHash('sha256')
+    .update(machineId)
+    .update('craft-agent-credentials-file')
+    .digest('hex')
+    .slice(0, 12);
+  return `credentials.${hash}.enc`;
+}
+
+/** All credential filenames this machine owns (per-machine + legacy), for logout. */
+export function getCredentialsFilenames(): string[] {
+  return [getMachineCredentialsFilename(), LEGACY_CREDENTIALS_FILENAME];
+}
+
+export interface SecureStorageOptions {
+  /** Directory holding credential files. Defaults to ~/.craft-agent. */
+  dir?: string;
+  /** Override the hardware machine ID (tests). */
+  machineId?: string;
+}
+
+type ReadResult =
+  | { status: 'ok'; store: CredentialStore; salt: Buffer; usedLegacyKey: boolean }
+  | { status: 'io-error' }
+  | { status: 'unreadable' };
+
 /** Internal credential store structure */
 interface CredentialStore {
   version: 1;
@@ -114,7 +160,34 @@ export class SecureStorageBackend implements CredentialBackend {
 
   private cachedStore: CredentialStore | null = null;
   private encryptionKey: Buffer | null = null;
+  /** Salt the cached encryptionKey was derived with. */
+  private keySalt: Buffer | null = null;
   private salt: Buffer | null = null;
+
+  private readonly dir: string;
+  private readonly machineIdOverride: string | undefined;
+  private resolvedFile: string | null = null;
+
+  constructor(options: SecureStorageOptions = {}) {
+    this.dir = options.dir ?? DEFAULT_CREDENTIALS_DIR;
+    this.machineIdOverride = options.machineId;
+  }
+
+  private get machineId(): string {
+    return this.machineIdOverride ?? getStableMachineId();
+  }
+
+  /** This machine's credentials file (resolved lazily — hardware ID lookup shells out). */
+  get filePath(): string {
+    if (!this.resolvedFile) {
+      this.resolvedFile = join(this.dir, getMachineCredentialsFilename(this.machineId));
+    }
+    return this.resolvedFile;
+  }
+
+  private get legacyFilePath(): string {
+    return join(this.dir, LEGACY_CREDENTIALS_FILENAME);
+  }
 
   async isAvailable(): Promise<boolean> {
     // File backend is always available - we can always write to filesystem
@@ -199,60 +272,69 @@ export class SecureStorageBackend implements CredentialBackend {
     // Return cached store if available
     if (this.cachedStore) return this.cachedStore;
 
-    if (!existsSync(CREDENTIALS_FILE)) return null;
+    if (!existsSync(this.filePath)) return this.importLegacyStore();
 
+    const result = this.readStoreFile(this.filePath);
+    if (result.status === 'io-error') return null;
+    if (result.status === 'unreadable') {
+      this.quarantineUnreadableFile();
+      return null;
+    }
+
+    this.salt = result.salt;
+    this.cachedStore = result.store;
+    if (result.usedLegacyKey) {
+      // Migration: re-save with new stable key so future loads use hardware UUID
+      this.saveStoreSync(result.store);
+    }
+    return result.store;
+  }
+
+  /**
+   * One-time import of the legacy shared `credentials.enc`, if this machine can
+   * decrypt it. If it can't (it belongs to another machine syncing the same
+   * dir), it's left untouched and we start empty. Never modifies the legacy file.
+   */
+  private importLegacyStore(): CredentialStore | null {
+    if (!existsSync(this.legacyFilePath)) return null;
+
+    const result = this.readStoreFile(this.legacyFilePath);
+    if (result.status !== 'ok') return null;
+
+    this.salt = result.salt;
+    this.saveStoreSync(result.store);
+    return result.store;
+  }
+
+  /** Read and decrypt a credentials file with the current key, then the v1 legacy key. */
+  private readStoreFile(path: string): ReadResult {
     let fileData: Buffer;
     try {
-      fileData = readFileSync(CREDENTIALS_FILE);
+      fileData = readFileSync(path);
     } catch {
-      return null;
+      return { status: 'io-error' };
     }
 
-    // Validate minimum size
-    if (fileData.length < HEADER_SIZE + IV_SIZE + AUTH_TAG_SIZE) {
-      // File is corrupted, delete and return null
-      this.handleCorruptedFile();
-      return null;
-    }
-
-    // Validate magic bytes
-    if (!fileData.subarray(0, MAGIC_SIZE).equals(MAGIC_BYTES)) {
-      this.handleCorruptedFile();
-      return null;
-    }
+    // Validate minimum size and magic bytes
+    if (fileData.length < HEADER_SIZE + IV_SIZE + AUTH_TAG_SIZE) return { status: 'unreadable' };
+    if (!fileData.subarray(0, MAGIC_SIZE).equals(MAGIC_BYTES)) return { status: 'unreadable' };
 
     // Parse header
     // const flags = fileData.readUInt32LE(MAGIC_SIZE); // Reserved for future use
-    const salt = fileData.subarray(MAGIC_SIZE + FLAGS_SIZE, MAGIC_SIZE + FLAGS_SIZE + SALT_SIZE);
-    this.salt = salt;
+    const salt = Buffer.from(fileData.subarray(MAGIC_SIZE + FLAGS_SIZE, MAGIC_SIZE + FLAGS_SIZE + SALT_SIZE));
 
     // Extract encrypted data
     const encryptedData = fileData.subarray(HEADER_SIZE);
 
     // Try new stable key first (v2 - hardware UUID based)
-    const newKey = this.getEncryptionKey(salt);
-    let store = this.tryDecrypt(encryptedData, newKey);
-
-    if (store) {
-      this.cachedStore = store;
-      return store;
-    }
+    const store = this.tryDecrypt(encryptedData, this.getEncryptionKey(salt));
+    if (store) return { status: 'ok', store, salt, usedLegacyKey: false };
 
     // Try legacy key for migration (v1 - included hostname)
-    // This handles credentials encrypted with old key derivation
-    const legacyKey = this.getLegacyEncryptionKey(salt);
-    store = this.tryDecrypt(encryptedData, legacyKey);
+    const legacyStore = this.tryDecrypt(encryptedData, this.getLegacyEncryptionKey(salt));
+    if (legacyStore) return { status: 'ok', store: legacyStore, salt, usedLegacyKey: true };
 
-    if (store) {
-      // Migration: re-save with new stable key so future loads use hardware UUID
-      this.cachedStore = store;
-      this.saveStoreSync(store);
-      return store;
-    }
-
-    // Both keys failed - file is truly corrupted
-    this.handleCorruptedFile();
-    return null;
+    return { status: 'unreadable' };
   }
 
   /**
@@ -280,8 +362,8 @@ export class SecureStorageBackend implements CredentialBackend {
 
   private saveStoreSync(store: CredentialStore): void {
     // Ensure directory exists
-    if (!existsSync(CREDENTIALS_DIR)) {
-      mkdirSync(CREDENTIALS_DIR, { recursive: true, mode: 0o700 });
+    if (!existsSync(this.dir)) {
+      mkdirSync(this.dir, { recursive: true, mode: 0o700 });
     }
 
     // Use existing salt or generate new one
@@ -312,22 +394,23 @@ export class SecureStorageBackend implements CredentialBackend {
     const fileData = Buffer.concat([header, iv, authTag, ciphertext]);
 
     // Write with restrictive permissions (owner read/write only)
-    writeFileSync(CREDENTIALS_FILE, fileData, { mode: 0o600 });
+    writeFileSync(this.filePath, fileData, { mode: 0o600 });
     this.cachedStore = store;
   }
 
   private getEncryptionKey(salt: Buffer): Buffer {
-    if (this.encryptionKey) return this.encryptionKey;
+    if (this.encryptionKey && this.keySalt?.equals(salt)) return this.encryptionKey;
 
     // New stable machine ID using hardware UUID (v2)
     // This is far more stable than hostname which can change with network/DHCP
     const stableMachineId = createHash('sha256')
-      .update(getStableMachineId())
+      .update(this.machineId)
       .update('craft-agent-v2') // Bumped version for new key derivation
       .digest();
 
     // Derive key using PBKDF2
     this.encryptionKey = pbkdf2Sync(stableMachineId, salt, PBKDF2_ITERATIONS, KEY_SIZE, 'sha256');
+    this.keySalt = salt;
 
     return this.encryptionKey;
   }
@@ -347,24 +430,26 @@ export class SecureStorageBackend implements CredentialBackend {
     return pbkdf2Sync(legacyMachineId, salt, PBKDF2_ITERATIONS, KEY_SIZE, 'sha256');
   }
 
-  private handleCorruptedFile(): void {
-    // Delete corrupted file - user will need to re-enter credentials
+  /**
+   * This machine's own file can't be decrypted. Move it aside rather than
+   * deleting it, so nothing is lost silently; the user re-enters credentials.
+   */
+  private quarantineUnreadableFile(): void {
     try {
-      if (existsSync(CREDENTIALS_FILE)) {
-        unlinkSync(CREDENTIALS_FILE);
+      if (existsSync(this.filePath)) {
+        renameSync(this.filePath, `${this.filePath}.unreadable-${Date.now()}`);
       }
     } catch {
-      // Ignore deletion errors
+      // Ignore rename errors
     }
-    this.cachedStore = null;
-    this.encryptionKey = null;
-    this.salt = null;
+    this.clearCache();
   }
 
   /** Clear cached data (for testing or forced refresh) */
   clearCache(): void {
     this.cachedStore = null;
     this.encryptionKey = null;
+    this.keySalt = null;
     this.salt = null;
   }
 }

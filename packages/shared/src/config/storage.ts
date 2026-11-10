@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, statSync, readdirSync } from 'fs';
 import { join, dirname, basename } from 'path';
-import { getCredentialManager } from '../credentials/index.ts';
+import { getCredentialManager, getCredentialsFilenames } from '../credentials/index.ts';
 import { getOrCreateLatestSession, type SessionConfig } from '../sessions/index.ts';
 import {
   discoverWorkspacesInDefaultLocation,
@@ -642,10 +642,12 @@ export async function clearAllConfig(): Promise<void> {
     rmSync(CONFIG_FILE);
   }
 
-  // Delete credentials file
-  const credentialsFile = join(CONFIG_DIR, 'credentials.enc');
-  if (existsSync(credentialsFile)) {
-    rmSync(credentialsFile);
+  // Delete this machine's credentials file (and the legacy shared one)
+  for (const filename of getCredentialsFilenames()) {
+    const credentialsFile = join(CONFIG_DIR, filename);
+    if (existsSync(credentialsFile)) {
+      rmSync(credentialsFile);
+    }
   }
 
   // Optionally: Delete workspace data (conversations)
